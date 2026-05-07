@@ -95,7 +95,7 @@ Los detectores y recomendadores nunca contienen literales tipo `"users"` o `"ema
 
 ### R15. Documentación obligatoria al cerrar una actividad
 
-Cuando un agente cierra una actividad del backlog **debe hacer las dos cosas siguientes en el mismo PR**, no en uno separado:
+Cuando un agente cierra una actividad del backlog **debe hacer las dos cosas siguientes antes de hacer `git push`**:
 
 1. **Agregar entrada en `PROGRESS.md`** bajo el día actual con: código de actividad cerrada, resumen de 1-2 líneas, archivos modificados, decisiones que se tomaron (si las hubo)
 2. **Actualizar el `CLAUDE.md` del módulo afectado** si el cambio modifica:
@@ -104,9 +104,13 @@ Cuando un agente cierra una actividad del backlog **debe hacer las dos cosas sig
    - La lista de detectores, validaciones o reglas implementadas
    - Cualquier convención que un agente futuro deba conocer para seguir el patrón
 
-Si el cambio no afecta nada de lo anterior (ej: refactor interno, fix de bug menor), basta con `PROGRESS.md`. Pero pregúntate honestamente: ¿el siguiente agente que toque este módulo necesita saber esto? Si sí, va en el `CLAUDE.md`.
+Si el cambio no afecta nada de lo anterior (ej: refactor interno, fix de bug menor), basta con `PROGRESS.md`. Pero pregúntate honestamente: ¿el siguiente agente que toque este módulo necesita saber esto? Si sí, va en el `CLAUDE.md` del módulo actual.
 
-**Esta regla es bloqueante.** Un PR que cierra una actividad del backlog y no actualiza la documentación correspondiente se rechaza en review, sin excepción.
+**Esta regla es obligatoria.** Antes de hacer `git push` de la rama que cierra una actividad, verifica que las actualizaciones de documentación están en los commits. Si se te olvidó, agrega la documentación en un commit adicional antes del push.
+
+**Recordatorio práctico para usar con Claude Code:** antes de pedirle que haga commit final o push, dile:
+
+> Antes de hacer push, recordatorio R15: ¿qué hay que actualizar en `PROGRESS.md` y en algún `CLAUDE.md` de módulo según los cambios de esta rama?
 
 ### R16. Standup diario
 
@@ -114,9 +118,15 @@ Si el cambio no afecta nada de lo anterior (ej: refactor interno, fix de bug men
 
 ### R17. Pull Requests con review entre miembros
 
-Nadie mergea su propio PR a `main`. Mínimo un compañero revisa. La rama `main` está protegida.
+Aunque la rama `main` no esté técnicamente protegida en GitHub, **nadie hace push directo a `main` ni mergea su propio PR sin revisión.** Esto aplica por convención del equipo, no por bloqueo de la herramienta.
 
-Excepción: si en las últimas 24 horas antes del Demo Day un PR de fix urgente no encuentra reviewer disponible en 30 minutos, se merge con auto-aprobación dejando comentario explicando por qué.
+Flujo correcto para cualquier cambio:
+
+1. Crear una rama desde `main`: `git checkout -b tipo/descripcion-corta`
+2. Trabajar y hacer commits en esa rama
+3. Antes de `git push`, verificar regla R15 (documentación)
+4. Pushear la rama y abrir Pull Request en GitHub
+5. Confirmar que el código está bien antes del merge
 
 ### R18. Commits distribuidos entre los 5 miembros
 
@@ -138,9 +148,9 @@ Lista negra de cosas que rompen el producto o la nota:
 - ❌ Hardcodear nombres de tablas, columnas o queries específicas de AppDB
 - ❌ Llamar al LLM sin sanitizar literales
 - ❌ Mergear sin tests
-- ❌ Push directo a `main`
+- ❌ Push directo a `main` (incluso sin protección activa)
 - ❌ Commits genéricos ("fix", "cambios", "wip")
 - ❌ Copiar datos de la BD cliente al sandbox
 - ❌ Que el LLM tenga la palabra final en una recomendación
-- ❌ Cerrar una actividad sin actualizar `PROGRESS.md`
+- ❌ Hacer `git push` sin actualizar `PROGRESS.md` cuando se cierra una actividad
 - ❌ "Resolverlo después" para algo que la rúbrica evalúa explícitamente

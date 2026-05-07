@@ -14,7 +14,7 @@ Este archivo es el log cronológico del proyecto. Cada vez que un agente cierra 
 
 Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` para conocer el estado actual del proyecto y detectar decisiones recientes que pueden afectar su trabajo.
 
-**Recordatorio de regla R15 (en `RULES.md`):** ningún PR que cierra una actividad del backlog se mergea sin actualizar este archivo Y, si aplica, el `CLAUDE.md` del módulo afectado.
+**Recordatorio de regla R15 (en `RULES.md`):** antes de hacer `git push` de una rama que cierra una actividad del backlog, hay que agregar entrada en este archivo Y, si aplica, actualizar el `CLAUDE.md` del módulo afectado. Si el módulo no tiene `CLAUDE.md` todavía, hay que crearlo (ver convención en `CLAUDE.md` raíz).
 
 ---
 

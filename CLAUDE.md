@@ -2,9 +2,9 @@
 
 Analizador inteligente de queries Postgres que detecta anti-patterns, recomienda índices y sugiere reescrituras combinando un motor determinístico con una capa de IA con guardrails. Producto B2B para developers backend con Postgres en producción.
 
-Proyecto final de SIS2404 (Bases de Datos Avanzadas), Universidad Anáhuac Querétaro. Equipo de 5 personas, 9 días de desarrollo, Demo Day el 14 de mayo de 2026.
+Proyecto final de SIS2404 (Bases de Datos Avanzadas), Universidad Anáhuac Querétaro. Equipo de 5 personas, Demo Day el 14 de mayo de 2026.
 
-## La regla #1 del proyecto
+## La regla #1 del proyectos
 
 **El motor determinístico detecta y decide. El LLM explica y propone. El motor valida lo que el LLM propone. Si el LLM contradice al motor, gana el motor.**
 
@@ -72,8 +72,27 @@ black . && isort .
 1. **Antes de tocar código en un módulo, carga su `CLAUDE.md`.** Por ejemplo, si vas a trabajar en detectores, carga `@motor/CLAUDE.md`.
 2. **Lee `RULES.md` en cada sesión.** Las reglas de código son inviolables.
 3. **Revisa `PROGRESS.md` antes de empezar.** Para saber qué actividad del backlog tomar y qué decisiones recientes pueden afectarte.
-4. **Documenta lo que hiciste.** Al cerrar una actividad, agrega entrada en `PROGRESS.md` Y actualiza el `CLAUDE.md` del módulo si cambiaste su comportamiento. Esto es bloqueante: PR sin actualización no se mergea.
+4. **Documenta antes de hacer push.** Al cerrar una actividad, antes de `git push` agrega entrada en `PROGRESS.md` Y actualiza el `CLAUDE.md` del módulo si cambiaste su comportamiento. Si el módulo no tiene `CLAUDE.md` todavía (porque eres la primera persona que trabaja ahí), créalo siguiendo la convención descrita abajo. Esta regla es obligatoria — ver R15 en `RULES.md`.
 5. **Tests verdes antes de mergear.** Si rompes `main`, paga café.
+
+## Convención para los `CLAUDE.md` de cada módulo
+
+Cada carpeta de módulo (`/conector`, `/motor`, `/ia`, `/workload`, `/sandbox`, `/backend`, `/frontend`) tiene su propio `CLAUDE.md` que documenta cómo funciona ese módulo internamente. La primera persona que trabaja en un módulo es responsable de crear su `CLAUDE.md`.
+
+**Cuándo crearlo:** la primera vez que un agente abre un módulo y agrega código real (no placeholder). Antes del primer push de ese módulo.
+
+**Qué debe contener (mínimo viable):**
+
+- **Propósito del módulo:** 2-3 líneas sobre qué hace y qué NO hace
+- **API pública:** qué funciones, clases o endpoints expone el módulo y qué reciben/devuelven
+- **Estructura interna:** cómo están organizados los archivos dentro del módulo
+- **Cómo extender:** si alguien necesita agregar algo (ej: un detector nuevo, un validador nuevo), cómo lo hace
+- **Decisiones específicas del módulo:** convenciones que aplican solo aquí (ej: "todos los detectores devuelven `Detection(found, confidence, evidence)`")
+- **Tests:** dónde están y cómo correrlos
+
+**Cómo evolucionarlo:** cada vez que un agente cambia algo que afecta cómo otro agente debería usar o extender el módulo, actualiza el `CLAUDE.md` del módulo en el mismo push (regla R15).
+
+Si trabajas en un módulo que ya tiene `CLAUDE.md`, cárgalo en tu sesión de Claude Code antes de empezar a programar (`@motor/CLAUDE.md` por ejemplo).
 
 ## Archivos de referencia
 

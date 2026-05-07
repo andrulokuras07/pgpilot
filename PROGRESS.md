@@ -89,26 +89,40 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
-## YYYY-MM-DD — Día 1 del proyecto
+## 2026-05-06 — Día 1 del proyecto
 
 ### Avances
 
-*(Aún no hay avances registrados. La primera entrada real reemplaza esta línea.)*
+#### A1 — Crear repositorio Git
+- **Autor:** Andrés Angulo
+- **Archivos:** `.gitignore`, `README.md`
+- **Notas:** Repo `pgpilot` creado en GitHub. Los 4 compañeros agregados como colaboradores. Protección de rama `main` por ahora NO activada (ver decisión abajo).
+- **Tests:** N/A
+
+#### A2 — Definir estructura de carpetas
+- **Autor:** Andrés Angulo
+- **Archivos:** carpetas `/conector`, `/motor`, `/ia`, `/workload`, `/sandbox`, `/backend`, `/frontend`, `/docs`, `/docs/patterns`, `/docs/briefs`, `/business`, `/tests`, `/scripts` con README placeholder en cada una.
+- **Notas:** Estructura alineada con la documentada en `CLAUDE.md`. Agregada carpeta `/backend` para FastAPI y `/docs/briefs` para los PDFs originales del proyecto.
+- **Tests:** N/A
+
+#### Setup inicial — Archivos de contexto base
+- **Autor:** Andrés Angulo
+- **Archivos:** `CLAUDE.md`, `RULES.md`, `PROGRESS.md` en raíz
+- **Notas:** Tres archivos de contexto agregados antes de que el equipo arranque cualquier código, para que Claude Code de cada miembro tenga las reglas y arquitectura desde la primera sesión.
 
 ### Decisiones
 
-#### Stack técnico inicial
-- **Autor:** Equipo (kickoff)
-- **Contexto:** Definir tecnologías base antes de empezar a programar
-- **Decisión:** Python + FastAPI + psycopg backend, React + Vite + Monaco frontend, Anthropic Claude LLM, sqlglot parser, Postgres 16 base
-- **Razón:** Python tiene mejor soporte para parsing SQL y validación con Pydantic. FastAPI es rápido de levantar. Monaco es estándar para editores SQL en producción.
-- **Trade-offs:** Stack mixto (Python + JS) implica dos toolchains, pero ningún stack único cubre bien backend de análisis + frontend tipo IDE.
+#### Documentación obligatoria al hacer push, no al hacer PR
+- **Autor:** Andrés Angulo
+- **Contexto:** La regla R15 original exigía actualizar `PROGRESS.md` y los `CLAUDE.md` de módulos antes de mergear el PR. Esto solo funciona si la rama `main` está protegida y bloquea push directos. Como el equipo no domina Git todavía, activar la protección agregaría fricción de aprendizaje.
+- **Alternativas consideradas:** (a) activar protección de rama y mantener regla atada al PR, (b) posponer protección y atar la regla al `git push` en lugar del PR
+- **Decisión:** Opción b — la regla se cumple antes de cada push. 
+- **Razón:** Permite que el equipo aprenda el flujo de Git con menos fricción mientras mantiene viva la regla de documentación obligatoria. La regla deja de depender de la herramienta y pasa a depender de disciplina del equipo, lo cual es viable porque cada agente Claude Code va a leer `RULES.md` antes de hacer push.
+- **Trade-offs:** Si alguien hace push directo a `main` por accidente, no hay red de seguridad técnica. Mitigación: comunicación clara en el grupo de WhatsApp y recordatorio en standups.
 
-#### Roles del equipo
-- **Autor:** Equipo
-- **Contexto:** Reparto de los 5 roles del brief
-- **Decisión:** Por confirmar tras revisión del backlog
-- **Razón:** —
+### Bloqueos detectados
+
+- Ninguno.
 
 ---
 

@@ -31,11 +31,7 @@ Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` par
 - ⬜ Hito 3 (Demo Day) — 14 de mayo de 2026
 
 ### Asignación de roles
-- **Conector e Ingesta:** [pendiente]
-- **Motor Determinístico:** [pendiente]
-- **Capa de IA + Validación:** [pendiente]
-- **Workload + Sandbox:** [pendiente]
-- **Producto y Negocio:** [pendiente]
+*El equipo decidió no asignar roles fijos. Cualquier miembro puede tomar cualquier actividad del backlog. Ver decisión del 2026-05-08 en este archivo.*
 
 ### Actividades en curso
 *(Esta sección la actualiza cada miembro al tomar/cerrar tareas. Una actividad nunca debe estar "in progress" más de 3 días sin moverse.)*
@@ -89,6 +85,18 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-08
+
+### Decisiones
+
+#### Modificación del backlog: eliminación de A4 y A7, reformulación de A6
+- **Autor:** Andrés Angulo
+- **Contexto:** revisión inicial del backlog antes de arrancar Fase 0. Se identificaron tres actividades que no encajan con la forma de trabajo decidida por el equipo.
+- **Cambios:**
+  - **A4 (tablero de tareas):** eliminada. El equipo se coordina con el backlog en Markdown, `PROGRESS.md` y GitHub Issues. No se usará tablero externo.
+  - **A6 (decisiones del equipo):** reformulada. Pasa de Google Doc/Notion a `docs/decisiones.md` dentro del repo. Razón: tener todo versionado en Git y evitar herramientas paralelas.
+  - **A7 (asignar roles):** eliminada. El equipo trabajará sin roles fijos; cualquiera puede tomar cualquier actividad disponible.
+
 ## 2026-05-06 — Día 1 del proyecto
 
 ### Avances
@@ -123,6 +131,16 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ### Bloqueos detectados
 
 - Ninguno.
+
+## 2026-05-08
+
+### Avances
+
+#### A6 — Documento de decisiones del equipo
+- **Autor:** Andrés Angulo
+- **Archivos:** `docs/decisiones.md`
+- **Notas:** Archivo creado con las 4 secciones inicializadas (Stack, Arquitectura, Trade-offs, Bloqueos). Contenido se llena progresivamente; sección Stack se completa en A8.
+- **Tests:** N/A
 
 ---
 

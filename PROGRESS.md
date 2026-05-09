@@ -142,6 +142,12 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 - **Notas:** Archivo creado con las 4 secciones inicializadas (Stack, Arquitectura, Trade-offs, Bloqueos). Contenido se llena progresivamente; sección Stack se completa en A8.
 - **Tests:** N/A
 
+#### A8 — Stack técnico documentado
+- **Autor:** Andrés Angulo
+- **Archivos:** `docs/decisiones.md`
+- **Notas:** Sección "Stack elegido" llenada con justificación de cada decisión (Python+FastAPI, psycopg v3, sqlglot, Pydantic, React+Vite+Monaco+Tailwind, Claude API, Postgres 16, Docker Compose, pytest, black+isort). Cubre Criterio 1.2 de la rúbrica.
+- **Tests:** N/A
+
 ---
 
 ## Histórico de hitos

@@ -85,6 +85,28 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-09
+
+### Avances
+
+#### B1 — Conector a Postgres con read-only forzado
+- **Autor:** Andrés Angulo
+- **Archivos:** `conector/__init__.py`, `conector/config.py`, `conector/pool.py`, `conector/CLAUDE.md`, `conector/README.md`, `tests/conector/conftest.py`, `tests/conector/test_pool.py`, `requirements.txt`, `pyproject.toml`, `.env.example`
+- **Notas:** Pool `psycopg_pool.ConnectionPool` que aplica `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` y `SET statement_timeout = 5000` por conexión vía `configure` callback. Cumple R7 (read-only forzado en BD del cliente). Detalles de API y decisiones internas del módulo en `conector/CLAUDE.md`.
+- **Tests:** ✅ 4/4 verde contra AppDB en `localhost:5434` (SELECT funciona, INSERT rechazado con SQLSTATE 25006, DDL rechazado, `pg_sleep(10)` cancelado por timeout). Marcados con `@pytest.mark.integration`.
+
+### Decisiones
+
+#### Layout Python: dependencias y tooling en la raíz del repo
+- **Autor:** Andrés Angulo
+- **Contexto:** primer módulo Python del proyecto (B1). Había que decidir si cada módulo (`/conector`, `/motor`, `/ia`, `/workload`, `/backend`) tiene su propio venv y `requirements.txt`, o si comparten uno solo en la raíz.
+- **Alternativas:** (a) un venv y `requirements.txt` por módulo, (b) un solo venv compartido en raíz para todo el monorepo Python.
+- **Decisión:** opción (b). `requirements.txt` y `pyproject.toml` viven en la raíz. `pyproject.toml` configura `pythonpath = ["."]` para que pytest pueda importar módulos sin instalarlos como paquete.
+- **Razón:** simplifica setup (`pip install -r requirements.txt` y listo), el backend va a importar de todos los módulos así que comparten dependencias por diseño, y match con el patrón del `docker-compose.yml` donde el backend es un solo servicio.
+- **Trade-off:** si algún módulo en el futuro necesita una versión incompatible de una dependencia, hay que romper este layout. Improbable en el alcance del proyecto.
+
+---
+
 ## 2026-05-08
 
 ### Decisiones

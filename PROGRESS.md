@@ -89,6 +89,12 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### B7 + B8 + B9 — Parser de EXPLAIN JSON y helper find_nodes
+- **Autor:** Andrés Angulo
+- **Archivos:** `motor/__init__.py`, `motor/parser.py`, `motor/nodes.py`, `motor/CLAUDE.md`, `motor/README.md` (eliminado, reemplazado por CLAUDE.md), `tests/motor/conftest.py`, `tests/motor/test_parser.py`, `tests/motor/test_parser_node_types.py`, `tests/motor/test_find_nodes.py`, `tests/motor/fixtures/*.json` (12 planes reales de AppDB + 1 sintético), `tests/motor/fixtures/README.md`.
+- **Notas:** Tres tickets empaquetados porque B8 y B9 son extensiones naturales de B7 sobre el mismo `PlanNode`. **B7:** `parse_explain(raw)` acepta `str` (JSON crudo), `list[dict]` (forma típica de `cur.fetchone()[0]`) o `Mapping` (entry suelto), devuelve `ExplainResult(root, planning_time_ms, execution_time_ms)`. `PlanNode` es un `dataclass(frozen=True)` con campos comunes y específicos por tipo de nodo, todos opcionales para tolerar EXPLAIN sin ANALYZE y diferencias entre versiones de Postgres. Children es `tuple[PlanNode, ...]` para preservar inmutabilidad. **B8:** `PlanNode` cubre los 16 tipos requeridos por el backlog (Seq Scan, Index Scan, Index Only Scan, Bitmap Heap/Index Scan, Nested Loop, Hash/Merge Join, Sort, Hash, Aggregate, Limit, Subquery Scan, CTE Scan, Materialize, Gather) más Gather Merge (que aparece naturalmente en planes paralelos de AppDB). Cada tipo expone sus campos relevantes (Index Cond, Hash Cond, Sort Key, Group Key, etc.). **B9:** `find_nodes(tree, node_type)` recorre DFS pre-order, acepta `PlanNode` o `ExplainResult` y `str` o iterable de tipos, devuelve lista vacía si no hay matches. Es la primitiva sobre la que escribirán los detectores (R2: estructura, no strings). API completa documentada en `motor/CLAUDE.md` (creado, primer toque al módulo).
+- **Tests:** ✅ 42/42 verde (10 de `find_nodes`, 13 de `parser`, 19 de `node_types`). Suite total del proyecto: 85/85 (43 conector + 42 motor). Tests son unit (no requieren AppDB); los fixtures JSON están versionados en `tests/motor/fixtures/`. `black` e `isort` aplicados.
+
 #### B4 + B5 + B6 — Stats por columna, cache de metadata, modo offline
 - **Autor:** Alexander
 - **Archivos:** `conector/stats.py`, `conector/types.py`, `conector/cache.py`, `conector/offline.py`, `conector/__init__.py`, `conector/CLAUDE.md`, `tests/conector/test_stats.py`, `tests/conector/test_cache.py`, `tests/conector/test_offline.py`, `.gitignore`
@@ -108,6 +114,26 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 - **Tests:** ✅ 4/4 verde contra AppDB en `localhost:5434` (SELECT funciona, INSERT rechazado con SQLSTATE 25006, DDL rechazado, `pg_sleep(10)` cancelado por timeout). Marcados con `@pytest.mark.integration`.
 
 ### Decisiones
+
+#### `PlanNode` con campos planos vs dict de extras (B7)
+- **Autor:** Andrés Angulo
+- **Contexto:** el JSON de EXPLAIN tiene ~30 campos opcionales según el tipo de nodo (Index Cond solo en Index Scan, Hash Cond solo en Hash Join, etc.). Dos opciones para representarlos en `PlanNode`.
+- **Alternativas:** (a) un atributo nombrado por cada campo posible, todos `Optional`; (b) un `extras: dict[str, Any]` con los campos específicos del tipo.
+- **Decisión:** opción (a) — un atributo por campo.
+- **Razón:** los detectores van a leer estos campos a montones (`node.index_name`, `node.sort_key`, etc.); con `extras["Index Name"]` perdemos type checking y autocomplete, y normalizar nombres "Title Case" → snake_case en cada call site es ruido. La explosión de atributos `Optional` se contiene a un solo dataclass que rara vez cambia.
+- **Trade-off:** si Postgres agrega un campo nuevo en una versión futura y no lo agregamos al dataclass, el parser lo ignora silenciosamente. Mitigación: pinneamos Postgres 16 vía docker-compose y agregar un campo es trivial.
+
+#### Subclases por tipo de nodo descartadas (B7+B8)
+- **Autor:** Andrés Angulo
+- **Contexto:** evaluamos si modelar cada tipo de nodo como una subclase de `PlanNode` para tener type checking más estricto.
+- **Decisión:** un solo `PlanNode` con todos los campos opcionales.
+- **Razón:** 16+ subclases es una explosión de boilerplate por marginal ganancia en seguridad. Los detectores filtran por `node.node_type == "X"` antes de leer campos específicos, lo que es legible y se valida con tests. Si en el futuro un detector se vuelve complejo, puede definirse un type guard local.
+
+#### Tests de `motor` son unit, sin marker `integration`
+- **Autor:** Andrés Angulo
+- **Contexto:** `tests/conector/` usa `@pytest.mark.integration` para los tests que necesitan AppDB. ¿Aplicamos la misma convención en `motor`?
+- **Decisión:** no. Los tests de `motor` parten de fixtures JSON versionados en `tests/motor/fixtures/`.
+- **Razón:** el parser y `find_nodes` son funciones puras; necesitar Docker para correr sus tests es ruido innecesario. Los fixtures se regeneran a mano cuando hace falta y se documentan en `tests/motor/fixtures/README.md`.
 
 #### Cache nombrado por `fingerprint`, no por `content_hash` (B5)
 - **Autor:** Alexander

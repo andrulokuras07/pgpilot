@@ -154,6 +154,32 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 - **Notas:** Compose raíz con servicios `appdb` (5434) y `sandbox` (5435). Backend y frontend quedan como placeholders comentados, se activan en fases posteriores. Init files de AppDB copiados del repo del profesor a `/infra/appdb/`. Dos decisiones registradas en `docs/decisiones.md`.
 - **Tests:** ✅ `docker compose up` levanta ambos contenedores con healthcheck en estado `healthy`.
 
+#### A1 — Protección de main activada
+- **Autor:** Andrés Angulo
+- **Archivos:** N/A (configuración en GitHub)
+- **Notas:** Activada protección de rama `main` con ruleset: requiere PR antes de merge, bloquea force push, bloquea deletions. Required approvals = 0 (decisión registrada abajo). Verificado con push directo a main rechazado.
+- **Tests:** ✅ Push directo a main rechazado por GitHub.
+
+#### A5 — AppDB corriendo localmente
+- **Autor:** Andrés Angulo
+- **Archivos:** N/A (verificación local)
+- **Notas:** AppDB v1.0 corriendo en localhost:5434. Verificación: `SELECT count(*) FROM pg_stat_statements` devuelve 34 (las 20 queries plantadas + variantes). Pendiente confirmar que los otros 4 miembros lo levanten en sus máquinas.
+- **Tests:** ✅ Conexión y query verificadas.
+
+### Decisiones
+
+#### Protección de main
+- **Autor:** Andrés Angulo
+- **Contexto:** R17 del equipo establece "PRs con review entre miembros". GitHub permite forzarlo con `Required approvals ≥ 1`. Se evaluó si activarlo.
+- **Alternativas:** (a) Required approvals = 1, forzando review técnico antes de merge. (b) Required approvals = 0, dejando review como norma social.
+- **Decisión:** opción (b).
+- **Razón:** quedan 9 días al Demo Day. Bloquear merges esperando review de un compañero introduce latencia que no nos podemos permitir. La regla R17 sigue viva como norma social: nadie hace push directo, todo va por PR, pero el merge no espera approval formal.
+- **Trade-off:** riesgo de mergear código roto a `main`. Mitigación parcial: tests verdes obligatorios antes de mergear (R operativa del backlog), commits descriptivos para revertir rápido si algo se rompe.
+
+#### Cierre de Fase 0
+- **Autor:** Andrés Angulo
+- **Estado:** todas las actividades de Fase 0 cerradas (A1, A2, A3, A5, A6, A8, A9). A4 y A7 eliminadas previamente. Equipo listo para arrancar Fase 1.
+
 ---
 
 ## Histórico de hitos

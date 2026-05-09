@@ -44,3 +44,6 @@ yarn-error.log*
 # Postgres local dumps / backups
 *.dump
 *.sql.bak
+
+# Cache local de metadata (B5). Cada dev regenera con su propia BD.
+cache/

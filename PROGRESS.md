@@ -89,6 +89,12 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### B4 + B5 + B6 — Stats por columna, cache de metadata, modo offline
+- **Autor:** Alexander
+- **Archivos:** `conector/stats.py`, `conector/types.py`, `conector/cache.py`, `conector/offline.py`, `conector/__init__.py`, `conector/CLAUDE.md`, `tests/conector/test_stats.py`, `tests/conector/test_cache.py`, `tests/conector/test_offline.py`, `.gitignore`
+- **Notas:** Tres tickets empaquetados en una rama porque comparten el contrato `SchemaSnapshot` (combinado schema+sizes+stats). **B4:** `get_column_stats(pool, schemas)` devuelve `dict["schema.tabla"][columna] -> ColumnStats` con `n_distinct`, `null_frac`, `most_common_vals` (lista de strings), `correlation`, y un flag `has_stats` que distingue "tabla sin ANALYZE" de "stats que reportan 0". Query con LEFT JOIN entre `pg_attribute` y `pg_stats`, filtrando `inherited=false`. **B5:** `extract_snapshot()` combina B2+B3+B4; `get_snapshot()` orquesta cache local en `cache/{fingerprint}.json` (fingerprint = md5 de host:port:db:schemas). `compute_content_hash` se guarda dentro del JSON para detectar drift. `invalidate_cache` borra por fingerprint o todo el directorio. `cache/` agregado a `.gitignore`. **B6:** `export_bundle()` y `load_bundle()` con el mismo formato que el cache; `validate_bundle()` recalcula y compara hash. El bundle es portable: el cliente lo genera en su entorno y nos lo comparte sin abrir conexión. API pública completa documentada en `conector/CLAUDE.md`.
+- **Tests:** ✅ 25/25 nuevos verde (7 stats integration, 14 cache mezcla unit+integration, 4 offline integration). Suite completa del módulo: 43/43 contra AppDB en `localhost:5434`. Cache hit medido en <100ms (criterio de B5). Tests de integración marcados con `@pytest.mark.integration`.
+
 #### B2 + B3 — Extractor de schema y de tamaños de tabla
 - **Autor:** Andrés Angulo
 - **Archivos:** `conector/schema.py`, `conector/sizes.py`, `conector/__init__.py`, `conector/CLAUDE.md`, `tests/conector/test_schema.py`, `tests/conector/test_sizes.py`
@@ -102,6 +108,22 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 - **Tests:** ✅ 4/4 verde contra AppDB en `localhost:5434` (SELECT funciona, INSERT rechazado con SQLSTATE 25006, DDL rechazado, `pg_sleep(10)` cancelado por timeout). Marcados con `@pytest.mark.integration`.
 
 ### Decisiones
+
+#### Cache nombrado por `fingerprint`, no por `content_hash` (B5)
+- **Autor:** Alexander
+- **Contexto:** el backlog literal pide `cache/{hash}.json` con hash del contenido del schema. Implementarlo así es circular: para saber qué archivo leer en una segunda extracción, hay que re-extraer y recalcular el hash, lo que defeats el propósito del cache (criterio "<100ms en segunda llamada").
+- **Alternativas:** (a) nombre del archivo = content hash + un índice separado mapeando connection params → hash; (b) nombre del archivo = fingerprint determinístico de la BD, content_hash guardado dentro del JSON.
+- **Decisión:** opción (b). `fingerprint = md5(host:port:dbname:schemas_ordenados)`. Cache path = `cache/{fingerprint}.json`. Dentro del archivo se guarda `content_hash` para detectar drift en una futura comparación.
+- **Razón:** lookup directo sin re-extracción, ergonomía limpia, mismo objetivo del backlog. La detección de drift sigue disponible vía el campo `content_hash` cuando alguien lo necesite.
+- **Trade-off:** el nombre del archivo no garantiza que dos archivos con el mismo nombre tengan el mismo contenido. Mitigación: `content_hash` interno + tests que validan el roundtrip.
+
+#### Modo offline: bundle JSON en lugar de `pg_dump` + `pg_stats` CSV (B6)
+- **Autor:** Alexander
+- **Contexto:** el backlog original sugiere parsear `pg_dump --schema-only` + un export CSV de `pg_stats`. Parsear pg_dump con sqlglot es frágil: emite SQL específico de Postgres (ALTER OWNER, SET, COMMENT, extensions) que sqlglot no parsea fielmente. Y `pg_stats.most_common_vals` es `anyarray`, parsearlo desde CSV requiere lógica por tipo.
+- **Alternativas:** (a) parser SQL completo de pg_dump + CSV reader de pg_stats; (b) bundle JSON que el cliente genera con `export_bundle()` corriendo PgPilot en su entorno; (c) ambos.
+- **Decisión:** opción (b) por ahora. Mismo formato que el cache (B5).
+- **Razón:** cumple el criterio del backlog ("el extractor produce el mismo dict de metadata desde un dump que desde conexión viva") y la motivación de venta ("empresas con datos sensibles no quieren dar acceso a la BD productiva"). El cliente nunca conecta a nuestra infra; nos da un archivo. Implementación limpia, testeable, en menos de 100 líneas.
+- **Trade-off:** asume que el cliente puede correr el binario de `export_bundle` (Python + psycopg en su entorno). Si en el futuro un cliente solo nos puede dar `pg_dump` SQL crudo, queda como ticket separado un parser pg_dump → SchemaSnapshot. Documentado en `conector/CLAUDE.md` como vía de extensión.
 
 #### Layout Python: dependencias y tooling en la raíz del repo
 - **Autor:** Andrés Angulo

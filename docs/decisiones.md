@@ -62,7 +62,22 @@ Bitácora viva de decisiones técnicas y de producto. Se actualiza durante todo 
 
 *Decisiones de diseño del sistema: separación de responsabilidades entre módulos, contratos entre componentes, flujos de datos, patrones aplicados.*
 
-*(Vacío al inicio. Se llena durante Fases 1-4.)*
+### Puertos de Postgres: AppDB en 5434, sandbox en 5435
+- **Fecha:** 2026-05-08
+- **Autor:** Andrés Angulo
+- **Contexto:** el backlog original asumía AppDB en 5432 y sandbox en 5433, pero el compose entregado por el profesor publica AppDB en 5434 (5432 y 5433 los ocupan TiendaDB y FintechDB de otros proyectos del curso).
+- **Decisión:** respetar los puertos del profesor. AppDB en 5434, sandbox en 5435.
+- **Razón:** el evaluador probablemente correrá los 3 productos del curso simultáneamente. Si tomamos 5432 chocamos con TiendaDB y `docker compose up` falla.
+- **Trade-off:** desviación menor del backlog original, sin impacto en arquitectura.
+
+### Init files de AppDB versionados en nuestro repo
+- **Fecha:** 2026-05-08
+- **Autor:** Andrés Angulo
+- **Contexto:** el compose de AppDB depende de `./init/` y `postgresql.conf` que viven en el repo del profesor. Para cumplir el requisito del brief ("`docker compose up` sin más configuración"), necesitábamos esos archivos disponibles localmente.
+- **Alternativas:** (a) instruir al evaluador a clonar dos repos, (b) copiar los archivos del profe a `/infra/appdb/` en nuestro repo.
+- **Decisión:** opción (b).
+- **Razón:** el brief es literal con "sin más configuración". Un solo comando, un solo repo.
+- **Trade-off:** duplicación de archivos del profe. Si actualiza AppDB hay que sincronizar a mano y registrarlo en PROGRESS.
 
 ---
 

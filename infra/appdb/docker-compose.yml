@@ -1,0 +1,41 @@
+# =====================================================================
+# AppDB v1.0 — Docker Compose
+# Social network demo database for PgPilot project (SIS2404)
+#
+# Usage:
+#   docker compose up -d           # Start the database
+#   docker compose logs -f db      # Watch the seeding progress
+#   docker compose down -v         # Stop and remove all data
+#
+# Tarda 3-4 minutos en sembrar la primera vez.
+# =====================================================================
+
+services:
+  db:
+    image: postgres:16
+    container_name: appdb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_pass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5434:5432"   # Different port from TiendaDB (5432) and FintechDB (5433)
+    volumes:
+      # Init scripts run in alphabetical order on first start
+      - ./init:/docker-entrypoint-initdb.d:ro
+      # Custom postgresql.conf with low work_mem (for Q05 spill)
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      # Data persistence
+      - app_data:/var/lib/postgresql/data
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  app_data:
+    name: appdb_data

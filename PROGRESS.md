@@ -148,6 +148,12 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 - **Notas:** Sección "Stack elegido" llenada con justificación de cada decisión (Python+FastAPI, psycopg v3, sqlglot, Pydantic, React+Vite+Monaco+Tailwind, Claude API, Postgres 16, Docker Compose, pytest, black+isort). Cubre Criterio 1.2 de la rúbrica.
 - **Tests:** N/A
 
+#### A9 — Esqueleto de docker-compose
+- **Autor:** Andrés Angulo
+- **Archivos:** `docker-compose.yml`, `infra/appdb/init/*`, `infra/appdb/postgresql.conf`, `infra/appdb/README.md`, `docs/decisiones.md`
+- **Notas:** Compose raíz con servicios `appdb` (5434) y `sandbox` (5435). Backend y frontend quedan como placeholders comentados, se activan en fases posteriores. Init files de AppDB copiados del repo del profesor a `/infra/appdb/`. Dos decisiones registradas en `docs/decisiones.md`.
+- **Tests:** ✅ `docker compose up` levanta ambos contenedores con healthcheck en estado `healthy`.
+
 ---
 
 ## Histórico de hitos

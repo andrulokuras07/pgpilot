@@ -1,0 +1,72 @@
+# HECHO CON CLAUDE
+
+services:
+  appdb:
+    image: postgres:16
+    container_name: appdb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_pass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./infra/appdb/init:/docker-entrypoint-initdb.d:ro
+      - ./infra/appdb/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - appdb_data:/var/lib/postgresql/data
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  sandbox:
+    image: postgres:16
+    container_name: sandbox
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sandbox
+      POSTGRES_USER: sandbox_user
+      POSTGRES_PASSWORD: sandbox_pass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5435:5432"
+    volumes:
+      - sandbox_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sandbox_user -d sandbox"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # backend:
+  #   build: ./backend
+  #   container_name: pgpilot_backend
+  #   depends_on:
+  #     appdb:
+  #       condition: service_healthy
+  #     sandbox:
+  #       condition: service_healthy
+  #   environment:
+  #     APPDB_URL: postgresql://app_user:app_pass@appdb:5432/appdb
+  #     SANDBOX_URL: postgresql://sandbox_user:sandbox_pass@sandbox:5432/sandbox
+  #     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  #   ports:
+  #     - "8000:8000"
+
+  # frontend:
+  #   build: ./frontend
+  #   container_name: pgpilot_frontend
+  #   depends_on:
+  #     - backend
+  #   ports:
+  #     - "5173:5173"
+
+volumes:
+  appdb_data:
+    name: pgpilot_appdb_data
+  sandbox_data:
+    name: pgpilot_sandbox_data

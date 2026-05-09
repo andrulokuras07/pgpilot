@@ -89,6 +89,12 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### B2 + B3 — Extractor de schema y de tamaños de tabla
+- **Autor:** Andrés Angulo
+- **Archivos:** `conector/schema.py`, `conector/sizes.py`, `conector/__init__.py`, `conector/CLAUDE.md`, `tests/conector/test_schema.py`, `tests/conector/test_sizes.py`
+- **Notas:** `get_schema(pool, schemas)` devuelve dict `"<schema>.<tabla>" → TableSchema` con columnas, índices (en orden, con método y flags `is_unique`/`is_primary`) y FKs. `get_table_sizes(pool, schemas)` devuelve `reltuples`, `pg_total_relation_size` y categoría `small`/`medium`/`large`/`unknown` (esta última cuando la tabla no tuvo ANALYZE). Queries van contra `pg_catalog`, no `information_schema`, para preservar orden de columnas en índices y manejar FKs compuestos. Empaquetadas como B2+B3 en una sola rama porque B3 es ampliación natural del extractor y comparten contrato de claves. API completa documentada en `conector/CLAUDE.md`.
+- **Tests:** ✅ 14/14 nuevos verde contra AppDB v1 en `localhost:5434` (7 integration de `get_schema`, 4 unit de `categorize`, 3 integration de `get_table_sizes`). Suite completa del módulo: 18/18. Los integration tests están marcados con `@pytest.mark.integration`.
+
 #### B1 — Conector a Postgres con read-only forzado
 - **Autor:** Andrés Angulo
 - **Archivos:** `conector/__init__.py`, `conector/config.py`, `conector/pool.py`, `conector/CLAUDE.md`, `conector/README.md`, `tests/conector/conftest.py`, `tests/conector/test_pool.py`, `requirements.txt`, `pyproject.toml`, `.env.example`

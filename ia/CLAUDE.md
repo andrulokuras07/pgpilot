@@ -9,7 +9,7 @@ Este módulo es la frontera entre el código determinístico del proyecto y el L
 ## Estado actual
 
 - ✅ B10 — sanitizador de literales (`sanitizer.py`)
-- ⬜ B11 — test de privacidad reforzado
+- ✅ B11 — test de privacidad del sanitizador (`tests/ia/test_privacidad.py`)
 - ⬜ C4 — prompt estructurado al LLM
 - ⬜ C5 — validación de respuesta con Pydantic
 - ⬜ C6 — validación cruzada de sugerencias

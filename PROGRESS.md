@@ -89,6 +89,12 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### B10 — Sanitizador de literales SQL
+- **Autor:** Regina Valenzuela
+- **Archivos:** `ia/__init__.py`, `ia/sanitizer.py`, `ia/CLAUDE.md`, `ia/README.md` (eliminado, reemplazado por CLAUDE.md, mismo patrón que `motor/`), `tests/ia/conftest.py`, `tests/ia/test_sanitizer.py`.
+- **Notas:** `sanitize(sql)` devuelve `SanitizedQuery(sql, literals)` con placeholders por tipo según backlog: `$LITERAL_1_<i>` strings, `$LITERAL_2_<i>` números, `$LITERAL_3_<i>` fechas ISO, `$LITERAL_4_<i>` UUIDs, `$LITERAL_5_<i>` emails. El sufijo numérico interno permite múltiples literales del mismo tipo en una query. Implementación con regex puro y un ordenamiento por `(start, -length)` que descarta matches solapados (ej: número o email dentro de un string ya consumido). `restore()` reconstruye el SQL original; docstring advierte que jamás debe usarse hacia el LLM. API documentada en `ia/CLAUDE.md` (creado, primer toque al módulo).
+- **Tests:** ✅ 18/18 verde. Criterio de "hecho cuando" cumplido: el test con email real (`juan@empresa.com`) y RFC mexicano (`GODE561231GR8`) verifica que ninguno aparece en el output. Suite total del proyecto: 103/103.
+
 #### B7 + B8 + B9 — Parser de EXPLAIN JSON y helper find_nodes
 - **Autor:** Andrés Angulo
 - **Archivos:** `motor/__init__.py`, `motor/parser.py`, `motor/nodes.py`, `motor/CLAUDE.md`, `motor/README.md` (eliminado, reemplazado por CLAUDE.md), `tests/motor/conftest.py`, `tests/motor/test_parser.py`, `tests/motor/test_parser_node_types.py`, `tests/motor/test_find_nodes.py`, `tests/motor/fixtures/*.json` (12 planes reales de AppDB + 1 sintético), `tests/motor/fixtures/README.md`.

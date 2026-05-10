@@ -85,6 +85,41 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-10
+
+### Avances
+
+#### B12 + B13 + B14 — Frontend Vite+React+Monaco, backend FastAPI stub y wiring
+- **Autor:** Andrés Angulo
+- **Archivos:** `frontend/package.json`, `frontend/vite.config.js`, `frontend/index.html`, `frontend/.gitignore`, `frontend/src/main.jsx`, `frontend/src/App.jsx`, `frontend/src/App.css`, `frontend/src/index.css`, `frontend/CLAUDE.md`, `frontend/README.md` (eliminado, reemplazado por CLAUDE.md como en `motor/` e `ia/`), `backend/__init__.py`, `backend/main.py`, `backend/CLAUDE.md`, `backend/README.md` (eliminado), `tests/backend/conftest.py`, `tests/backend/test_analyze.py`, `tests/backend/test_cors.py`, `requirements.txt` (agregadas `fastapi`, `uvicorn[standard]`, `httpx`).
+- **Notas:** Tres tickets en una rama porque B14 depende de B12+B13 y la integración solo se valida con los tres juntos. **B12:** scaffold de Vite + React 18 sin pasar por `npm create vite@latest` (ver decisión). Tema oscuro tipo VS Code hardcoded en CSS plano (decisión: Tailwind diferido). `App.jsx` arranca con una query de ejemplo realista (JOIN con fecha y agregación) para que el editor no se vea vacío en demo. **B13:** `POST /analyze` recibe `AnalyzeRequest(query: str, min_length=1)` y devuelve `AnalyzeResponse(detections, recommendations)` con listas vacías. El contrato es definitivo: cuando C9 conecte el motor real, solo se llenan los arrays, el frontend no cambia. `GET /health` extra para healthcheck rápido. CORS restringido a `http://localhost:5173`. **B14:** el botón "Analizar" hace `fetch` al backend, muestra estados `cargando`/`error`/`respuesta` en el panel lateral; ante error se sugiere verificar que el backend esté arriba.
+- **Tests:** ✅ 8/8 backend verde (5 endpoint + 3 CORS, todos con `TestClient` sin levantar uvicorn). Suite completa del proyecto sin marker integration: 84/84. Frontend sin tests automatizados por ahora (decisión: no se justifica testing de UI mientras solo es editor + fetch; introducir Vitest cuando aparezca lógica de negocio en C10/C11). `black` e `isort` aplicados al backend; sin diff.
+
+### Decisiones
+
+#### Tailwind diferido fuera de B12
+- **Autor:** Andrés Angulo
+- **Contexto:** el `CLAUDE.md` raíz lista Tailwind como parte del stack. B12 podría incluir el setup ahora o esperar a un componente que lo justifique.
+- **Alternativas:** (a) agregar `@tailwindcss/vite` v4 con configuración mínima ya en B12; (b) usar CSS plano (tema VS Code hardcoded) en B12 y agregar Tailwind cuando el primer componente lo necesite.
+- **Decisión:** opción (b). Tailwind se introducirá probablemente en C10 (tarjetas de detección) o C11 (comparativo before/after), donde una librería de utilidades acelera más que CSS escrito a mano.
+- **Razón:** B12 con CSS plano son ~60 líneas legibles que no fallan; agregar Tailwind ahora es overhead de configuración (postcss/vite plugin, purge, conflicts con estilos de Monaco) sin ganancia visible mientras el UI sea editor + panel. La regla R12 admite "Tailwind **o** CSS modules", así que técnicamente cumple.
+- **Trade-off:** cuando llegue C10 hay un commit de migración a Tailwind. Es una migración pequeña porque solo dos archivos CSS y el JSX no usa selectores complejos.
+
+#### Scaffold del frontend a mano en lugar de `npm create vite@latest`
+- **Autor:** Andrés Angulo
+- **Contexto:** el backlog literalmente dice "crear proyecto en `/frontend` con `npm create vite@latest -- --template react`". Ese comando es interactivo y descarga deps en el momento.
+- **Decisión:** escribir a mano los 8 archivos que Vite genera (`package.json`, `vite.config.js`, `index.html`, `src/main.jsx`, `src/App.jsx`, `src/index.css`, `src/App.css`, `.gitignore`). Versiones pinneadas a Vite 6.x y React 18.x.
+- **Razón:** el resultado funcional es idéntico, queda en el commit explícitamente lo que se versiona, y el ticket dice "hecho cuando `npm run dev` levanta el editor" — esa condición se cumple igual. Además evita que `npm create` descargue archivos no deseados (eslint default, etc.) que después habría que limpiar.
+- **Trade-off:** ninguno relevante. El `package.json` puede quedarse atrás respecto a lo que Vite scaffold genere en el futuro, pero se actualiza si hace falta.
+
+#### Listas vacías como contrato definitivo de `/analyze`
+- **Autor:** Andrés Angulo
+- **Contexto:** B13 es stub; B14 ya consume el endpoint. Tentación de devolver dummy data tipo `{"detections": [{"id": "...", "fake": true}]}` para que el frontend tenga algo que mostrar.
+- **Decisión:** devolver `{"detections": [], "recommendations": []}` reales y dejar que el frontend muestre "Aún no se ha analizado nada" cuando no hay data.
+- **Razón:** evita que el frontend acostumbre a dummies y obligue después a borrar lógica de display defensiva. El contrato (shape) es el real, solo el contenido es vacío. Es exactamente lo que pide el backlog ("devuelve por ahora `{detections: [], recommendations: []}`").
+
+---
+
 ## 2026-05-09
 
 ### Avances

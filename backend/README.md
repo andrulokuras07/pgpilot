@@ -1,3 +1,0 @@
-# backend
-
-Contenido por venir.

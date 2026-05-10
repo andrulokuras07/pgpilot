@@ -23,8 +23,13 @@ services:
       timeout: 5s
       retries: 20
 
+  # Sandbox usa Postgres 18 a propósito (AppDB se queda en 16):
+  # B15 falsea stats con `pg_set_relation_stats`, función que existe sólo
+  # desde PG18. Sin ella, el planner ignora `pg_class.reltuples/relpages`
+  # cuando el archivo en disco está vacío (caso de las tablas sandbox) y
+  # los costos colapsan a 0, dejando inútiles las validaciones de C3.
   sandbox:
-    image: postgres:16
+    image: postgres:18
     container_name: sandbox
     restart: unless-stopped
     environment:

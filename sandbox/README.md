@@ -1,3 +1,0 @@
-# sandbox
-
-Contenido por venir.

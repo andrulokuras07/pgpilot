@@ -89,6 +89,36 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### B15 + B16 — Sandbox Postgres efímero y `explain_in_sandbox`
+- **Autor:** Alexander
+- **Archivos:** `sandbox/__init__.py`, `sandbox/config.py`, `sandbox/pool.py`, `sandbox/setup.py`, `sandbox/explain.py`, `sandbox/CLAUDE.md`, `sandbox/README.md` (eliminado, reemplazado por CLAUDE.md como en el resto de módulos), `tests/sandbox/conftest.py`, `tests/sandbox/test_setup.py`, `tests/sandbox/test_explain.py`, `docker-compose.yml` (sandbox bumpeado a `postgres:18`), `.env.example` (agregadas `SANDBOX_*`).
+- **Notas:** Dos tickets empaquetados porque B16 es la operación end-to-end natural sobre la infra que monta B15. **B15:** `setup_sandbox_schema(pool, snapshot)` crea un schema `analysis_<uuid_hex>` con todas las tablas vacías del snapshot, recrea sus índices conservando nombre/método/orden y falsea `relpages`/`reltuples` con `pg_restore_relation_stats` (PG18+). No replica FKs (no afectan al planner de SELECTs). Tipos van crudos desde `format_type`. `drop_sandbox_schema` es idempotente con `DROP SCHEMA IF EXISTS ... CASCADE`. Pool separado del de `/conector`: `create_sandbox_pool` NO aplica read-only (sandbox necesita DDL) pero sí mantiene `statement_timeout` (regla operativa 5s). `SandboxConfig` es tipo distinto a `ConnectionConfig` a propósito para que no se confundan al pasar argumentos. **B16:** `explain_in_sandbox(pool, snapshot, query, *, timeout_seconds=5.0)` orquesta setup → `EXPLAIN (FORMAT JSON)` con `SET LOCAL search_path` y `SET LOCAL statement_timeout` → parse con `motor.parse_explain` → drop. Cleanup en `try/finally` garantiza que un crash en medio no deja schemas zombies (preparando E5). API completa documentada en `sandbox/CLAUDE.md` (creado, primer toque al módulo).
+- **Tests:** ✅ 14/14 verde (8 setup + 6 explain, todos `@pytest.mark.integration`). Criterio B15 cumplido en `test_setup_explain_returns_reasonable_plan`: 3 tablas montadas y EXPLAIN devuelve un plan con `Node Type = Seq Scan` sobre la tabla esperada con el filter correcto. Criterio B16 cumplido en `test_explain_with_appdb_snapshot_under_5_seconds`: snapshot real de AppDB → `explain_in_sandbox` retorna `ExplainResult` en menos de 5 segundos. Suite total del proyecto: 127/127 (43 conector + 42 motor + 20 ia + 8 backend + 14 sandbox). `black` e `isort` aplicados.
+
+### Decisiones
+
+#### Sandbox a Postgres 18 (AppDB sigue en 16)
+- **Autor:** Alexander
+- **Contexto:** R6 nombra explícitamente `pg_set_relation_stats` y `pg_set_attribute_stats` para falsear stats sin copiar datos. En Postgres 16 esas funciones no existen — fueron agregadas en PG18 con los nombres `pg_restore_relation_stats` / `pg_restore_attribute_stats`. Sin ellas, el camino habitual era `UPDATE pg_class`, pero verifiqué empíricamente que el planner PG16 ignora `pg_class.relpages` cuando difiere del tamaño físico del archivo (`RelationGetNumberOfBlocks`); para tablas vacías eso colapsa los costos a 0.
+- **Alternativas:** (a) sandbox sigue en PG16 y aceptamos `UPDATE pg_class` con costos colapsados; (b) sandbox sigue en PG16 e insertamos cientos de MB de datos sintéticos por análisis para inflar el tamaño físico; (c) sandbox sube a PG18 y usamos `pg_restore_relation_stats` como pide el espíritu de R6, AppDB se queda en 16.
+- **Decisión:** opción (c). Sólo se cambia `image: postgres:16` → `image: postgres:18` en el servicio `sandbox` del compose. El volumen `pgpilot_sandbox_data` se borra y se recrea (sandbox no tiene data persistente que importe). AppDB se queda en 16 porque la BD del cliente *es* lo que representa AppDB.
+- **Razón:** alinear con el backlog (R6) sin pelearle al planner de PG16; sandbox es infraestructura nuestra, podemos elegir su versión; el costo es ~0 (volumen ephemero); la ganancia es semántica correcta y dejar el camino limpio para E5/E6 y stats por columna.
+- **Trade-off:** descubrimos al testear que aun con `pg_restore_relation_stats` el planner sigue consultando el tamaño físico para calcular costos, así que para tablas vacías los costos absolutos siguen siendo ~0. Eso NO bloquea B15/B16 (validamos estructura del plan, no magnitudes) pero sí va a importar en C3 (validación de recomendaciones por costo): documentado como deuda en `sandbox/CLAUDE.md`. La opción esperable es insertar filas sintéticas acotadas o pivotear C3 hacia razonar sobre el cambio de tipo de nodo (Seq → Index) en lugar de magnitudes.
+
+#### Pool del sandbox como tipo separado (SandboxConfig, create_sandbox_pool)
+- **Autor:** Alexander
+- **Contexto:** podríamos reusar `ConnectionConfig` + `create_pool` de `/conector` y pasarle el host/port del sandbox. Pero ese pool fuerza `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` por R7, lo cual rompe el sandbox (no puede CREATE SCHEMA).
+- **Alternativas:** (a) parametrizar `create_pool` con `read_only: bool = True`; (b) crear `SandboxConfig` + `create_sandbox_pool` como tipo distinto.
+- **Decisión:** opción (b).
+- **Razón:** confundir ambos pools sería un bug de seguridad disfrazado (R7 protege la BD del cliente; un parámetro booleano se setea mal por copy/paste accidental). Tipos distintos imponen pensar en cada uso. El costo es ~60 líneas duplicadas que rara vez van a cambiar.
+- **Trade-off:** si en el futuro hay un tercer tipo de pool (ej. réplica read-only), seguramente vamos a querer una factory común. No es problema hoy.
+
+#### `explain_in_sandbox` se queda con EXPLAIN sin ANALYZE
+- **Autor:** Alexander
+- **Contexto:** el backlog (B16) dice "sin ANALYZE, no necesita filas reales". Era tentación dejar la opción abierta con un parámetro `analyze: bool`.
+- **Decisión:** API sin parámetro `analyze`. EXPLAIN siempre sin ANALYZE.
+- **Razón:** ANALYZE sobre tablas vacías es ruido — devuelve actual_rows=0 para todo y desinforma. Mantener la API mínima hace que el caller no se confunda. Si en algún futuro distante quisiéramos ANALYZE-style validation, se agrega el parámetro entonces, no ahora.
+
 #### B12 + B13 + B14 — Frontend Vite+React+Monaco, backend FastAPI stub y wiring
 - **Autor:** Andrés Angulo
 - **Archivos:** `frontend/package.json`, `frontend/vite.config.js`, `frontend/index.html`, `frontend/.gitignore`, `frontend/src/main.jsx`, `frontend/src/App.jsx`, `frontend/src/App.css`, `frontend/src/index.css`, `frontend/CLAUDE.md`, `frontend/README.md` (eliminado, reemplazado por CLAUDE.md como en `motor/` e `ia/`), `backend/__init__.py`, `backend/main.py`, `backend/CLAUDE.md`, `backend/README.md` (eliminado), `tests/backend/conftest.py`, `tests/backend/test_analyze.py`, `tests/backend/test_cors.py`, `requirements.txt` (agregadas `fastapi`, `uvicorn[standard]`, `httpx`).

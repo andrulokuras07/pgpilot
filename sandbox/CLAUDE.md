@@ -1,0 +1,242 @@
+# sandbox — Postgres efímero para validar planes
+
+## Propósito
+
+`/sandbox` monta schemas temporales en una segunda BD de Postgres
+(distinta a la del cliente) y corre `EXPLAIN` ahí. Sirve para que
+el motor pueda probar el plan de una query antes/después de aplicar
+una recomendación de índice — sin tocar la BD del cliente, sin
+copiar datos y sin riesgo de ejecutar la query.
+
+**Lo que NO hace este módulo:**
+- No habla con la BD del cliente (eso vive en `/conector`).
+- No parsea EXPLAIN ni decide nada sobre el plan (eso vive en `/motor`).
+- No habla con el LLM (eso vive en `/ia`).
+- No serializa output al frontend (eso vive en `/backend`).
+
+**Reglas vivas en este módulo:**
+- **R6:** sandbox monta tablas vacías y falsea stats; prohibido copiar
+  filas de la BD del cliente.
+- **R9:** las funciones públicas son self-contained — cada llamada
+  monta y dropea su propio schema, no comparte estado entre llamadas.
+- **Timeout duro 5s** (regla operativa): aplicado a nivel de pool y
+  reforzado por-llamada en `explain_in_sandbox`.
+
+## Stack
+
+- **Postgres 18** en el contenedor `sandbox` (puerto 5435 en
+  desarrollo). Bumpeo deliberado: AppDB se queda en 16, sandbox sube a
+  18 para tener `pg_restore_relation_stats`, función que persiste
+  stats falseadas en `pg_class` con la validación nativa. Decisión
+  documentada en `PROGRESS.md` 2026-05-10.
+- `psycopg` 3.x con `psycopg_pool.ConnectionPool` (mismo stack que
+  `/conector`, distinto pool).
+
+## API pública
+
+Exportado en `sandbox/__init__.py`:
+
+### `SandboxConfig` (frozen dataclass)
+Parámetros para abrir el pool:
+- `host: str`, `port: int`, `dbname: str`, `user: str`, `password: str`
+- `statement_timeout_ms: int = 5000` — timeout aplicado por sesión
+- `min_pool_size: int = 1`, `max_pool_size: int = 4`
+
+### `create_sandbox_pool(config) -> ConnectionPool`
+Pool de conexiones al sandbox. Cada conexión queda con
+`statement_timeout` aplicado a nivel de sesión. **No** se fuerza
+read-only: el sandbox necesita DDL para montar y desmontar schemas.
+La regla R7 (read-only forzado) NO aplica aquí porque sandbox es BD
+propia de PgPilot, no del cliente.
+
+### `setup_sandbox_schema(pool, snapshot, *, schema_name=None) -> str`
+Monta un schema temporal con las tablas y stats del snapshot.
+Devuelve el nombre del schema (autogenerado `analysis_<uuid_hex>` si
+no se pasa).
+
+Lo que hace, en orden, dentro de una sola transacción:
+1. `CREATE SCHEMA analysis_xxx`.
+2. Para cada tabla del snapshot:
+   - `CREATE TABLE` con las columnas y tipos del snapshot
+     (output de `format_type` tal cual). Respeta `NOT NULL` pero NO
+     replica FOREIGN KEYs (no afectan al planner de SELECTs y
+     complican el orden).
+   - `CREATE INDEX` para cada índice del snapshot, conservando
+     nombre, método (`btree`/`gin`/`gist`), unicidad y orden de
+     columnas.
+3. Para cada tabla con `category != "unknown"`:
+   - `pg_restore_relation_stats(schemaname, relname, relpages,
+     reltuples)` para falsear el tamaño. `relpages ≈ rows / 100`.
+
+### `drop_sandbox_schema(pool, schema_name) -> None`
+`DROP SCHEMA IF EXISTS ... CASCADE`. Idempotente.
+
+### `explain_in_sandbox(pool, snapshot, query, *, timeout_seconds=5.0, schema_name=None) -> motor.ExplainResult`
+Orquesta el flujo completo:
+1. Monta un schema temporal con `setup_sandbox_schema`.
+2. Abre una transacción nueva, setea `SET LOCAL statement_timeout` y
+   `SET LOCAL search_path = analysis_xxx, public`.
+3. Corre `EXPLAIN (FORMAT JSON)` sobre la query (sin ANALYZE).
+4. Parsea con `motor.parse_explain`.
+5. Dropea el schema (incluso si el EXPLAIN explotó: cleanup en
+   `try/finally`).
+
+Devuelve el `motor.ExplainResult` listo para los detectores y el
+recomendador. Si el EXPLAIN excede `timeout_seconds`, Postgres aborta
+con `psycopg.errors.QueryCanceled` (SQLSTATE 57014) y el schema igual
+se dropea.
+
+### Uso típico
+
+```python
+from conector import extract_snapshot
+from sandbox import SandboxConfig, create_sandbox_pool, explain_in_sandbox
+
+sandbox_pool = create_sandbox_pool(SandboxConfig(
+    host="localhost", port=5435, dbname="sandbox",
+    user="sandbox_user", password="sandbox_pass",
+))
+
+snapshot = extract_snapshot(appdb_pool)
+result = explain_in_sandbox(
+    sandbox_pool,
+    snapshot,
+    "SELECT * FROM posts WHERE author_id = 42",
+)
+print(result.root.node_type)  # 'Seq Scan' si no hay índice
+
+sandbox_pool.close()
+```
+
+## Estructura interna
+
+```
+sandbox/
+├── __init__.py     # exporta API pública del módulo
+├── config.py       # SandboxConfig (dataclass)
+├── pool.py         # create_sandbox_pool (sin read-only, con timeout)
+├── setup.py        # setup_sandbox_schema, drop_sandbox_schema (B15)
+├── explain.py      # explain_in_sandbox (B16)
+└── CLAUDE.md       # este archivo
+```
+
+## Cómo extender
+
+### Agregar soporte para FOREIGN KEYs
+Hoy `_create_table` ignora `table["foreign_keys"]`. Si un detector
+futuro necesita FKs para razonar (ej. detección de "FK sin índice"),
+agregarlos en un paso posterior a CREATE TABLE — todos los tables
+deben existir antes de poder agregar FKs entre ellos.
+
+### Agregar stats por columna
+Hoy `_set_relation_stats` solo setea relpages/reltuples. Para
+selectividades realistas (n_distinct, most_common_vals, correlation)
+hay que extender con `pg_catalog.pg_restore_attribute_stats(...)`.
+Disponible en PG18+ con la misma forma VARIADIC kwargs. Los datos
+necesarios ya viven en `snapshot["stats"]`.
+
+### Soportar tipos exóticos (postgis, vector, citext)
+`_create_table` reproduce los tipos tal cual los reportó `format_type`.
+Si el cliente usa extensiones, el sandbox debe tenerlas instaladas o
+caer a `text` (o `bytea`) por columna. Sumar un paso de extension
+detection antes del CREATE TABLE; degradar tipos desconocidos.
+
+### Multi-schema en el snapshot
+Hoy las tablas se aplanan en el schema temporal por nombre simple.
+Si dos schemas del cliente tuvieran tablas con el mismo nombre habría
+colisión. Para soportar multi-schema: usar dos schemas temporales
+(`analysis_xxx_public`, `analysis_xxx_analytics`) o renombrar las
+tablas en el sandbox y reescribir la query con `sqlglot`. Decisión
+para cuando aparezca el primer cliente multi-schema.
+
+### Cleanup de schemas zombies (E5)
+Si un análisis crashea entre `setup_sandbox_schema` y
+`drop_sandbox_schema`, queda un schema zombie. Para E5: agregar
+`cleanup_zombies(pool, prefix="analysis_")` que dropea todos los
+schemas que matchean el prefijo. Llamarlo al startup del backend.
+
+### Timeouts endurecidos (E6)
+Hoy aplicamos `statement_timeout`. E6 puede agregar timeouts
+per-operación (CREATE INDEX en sandbox, EXPLAIN, DROP) con
+`asyncio.wait_for` o threading para que ninguna pueda colgar el
+thread principal del backend.
+
+## Decisiones específicas del módulo
+
+- **Sandbox = PG18, AppDB = PG16.** Backlog R6 nombra explícitamente
+  `pg_set_relation_stats`/`pg_set_attribute_stats`; en PG18 se llaman
+  `pg_restore_relation_stats`/`pg_restore_attribute_stats` y son la
+  forma canónica de persistir stats sin pasar por VACUUM/ANALYZE.
+  AppDB se queda en 16 porque la BD del cliente es eso lo que
+  representamos; no la tocamos.
+- **El planner sigue usando el tamaño físico para costos.** Aun con
+  `pg_restore_relation_stats`, PG consulta `RelationGetNumberOfBlocks`
+  y, para archivos vacíos, los costos colapsan a ~0. Los TIPOS de
+  nodo (Seq Scan, Index Scan) sí responden a la presencia de índices,
+  así que las decisiones cualitativas se preservan. Las comparaciones
+  cuantitativas (cost reduction) se atenderán en C3 si las
+  necesitamos: probable insertar filas sintéticas acotadas o razonar
+  sobre cambio de tipo de nodo (Seq → Index) en lugar de magnitud.
+- **`SandboxConfig` separado de `ConnectionConfig`.** Mismo shape pero
+  intencionalmente distinto: confundir ambos pools (uno read-only,
+  otro no) sería un bug de seguridad. Mantenerlos como tipos
+  diferentes obliga a pensar.
+- **Pool del sandbox no es read-only.** R7 aplica al pool del
+  cliente, no al nuestro. Si alguien mete `SET TRANSACTION READ ONLY`
+  por copy/paste accidental, los tests fallarían al primer CREATE
+  SCHEMA (deliberado: que falle ruidoso).
+- **`setup_sandbox_schema` es una sola transacción**, todas las DDL
+  juntas. Si una falla, no queda schema parcial. PG soporta DDL
+  transaccional, así que esto Just Works.
+- **Nombres de schema con `analysis_` + UUID4 hex.** 41 chars,
+  determinístico para tests cuando se pasa explícito, único cuando
+  no. Prefijo `analysis_` facilita el cleanup_zombies futuro
+  (E5).
+- **FOREIGN KEYs no se replican.** El planner de SELECTs no las usa
+  para nada relevante (no son índices). Replicarlas exigiría ordenar
+  CREATE TABLE por dependencias y resolver ciclos: complejidad
+  injustificada para este caso.
+- **Tipos de columna van crudos desde `format_type`.** No hay
+  traducción "VARCHAR(50)" → "text". Si AppDB declara un tipo, el
+  sandbox lo intenta tal cual. Es la única forma de mantener
+  fidelidad del plan (anchos, longitudes, etc.).
+- **`SET LOCAL statement_timeout` per-call.** El pool ya tiene un
+  default a 5s; el parámetro `timeout_seconds` de `explain_in_sandbox`
+  override por transacción. `SET LOCAL` se descarta al cerrar la
+  transacción — la conexión queda limpia para el próximo caller del
+  pool.
+- **Cleanup en `try/finally`** en `explain_in_sandbox`. Si el
+  EXPLAIN falla por cualquier razón, el schema temporal igual se
+  dropea. Si el drop también falla, la excepción del EXPLAIN gana
+  como causa principal (es la información útil para el caller).
+
+## Tests
+
+Viven en `tests/sandbox/`:
+- `conftest.py`: fixtures `sandbox_pool`, `appdb_pool` y
+  `synthetic_snapshot` (3 tablas: `users`, `posts`, `tags`).
+- `test_setup.py`: 8 tests de integración — creación de schema +
+  tablas + índices, falseo de stats, skip de "unknown",
+  independencia entre llamadas, drop idempotente, plan razonable.
+- `test_explain.py`: 6 tests de integración — happy path con
+  snapshot sintético, snapshot real de AppDB en <5s, cleanup en
+  éxito y en error, timeout del pool con `SELECT pg_sleep`.
+
+Todos marcados `@pytest.mark.integration`. Requieren ambos
+contenedores levantados.
+
+**Cómo correrlos:**
+```bash
+# Levantar AppDB + sandbox
+docker compose up -d appdb sandbox
+
+# Correr solo este módulo
+pytest tests/sandbox
+
+# Excluir integration (solo verifica imports y estructura)
+pytest tests/sandbox -m "not integration"
+```
+
+Variables de entorno opcionales (defaults en `.env.example`):
+`SANDBOX_HOST`, `SANDBOX_PORT`, `SANDBOX_DB`, `SANDBOX_USER`,
+`SANDBOX_PASSWORD`.

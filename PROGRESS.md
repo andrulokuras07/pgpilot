@@ -89,6 +89,12 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### B11 — Test de privacidad del sanitizador
+- **Autor:** Regina Valenzuela
+- **Archivos:** `tests/ia/test_privacidad.py`, `ia/CLAUDE.md`.
+- **Notas:** Test específico que sanitiza una query con datos sensibles reales (email `juan.perez@empresa.com.mx`, RFC mexicano `GODE561231GR8`, número de tarjeta `4532015112830366`), escribe el output a un archivo temporal con `tmp_path` y verifica con `subprocess.run(["grep", ...])` que ninguno aparece. Segundo test confirma que los datos sí siguen disponibles en el mapa de literales para que `restore()` pueda reconstruir localmente. Es la prueba defensiva para el Q&A del Demo Day sobre privacidad.
+- **Tests:** ✅ 2/2 verde. Suite total del proyecto: 105/105.
+
 #### B10 — Sanitizador de literales SQL
 - **Autor:** Regina Valenzuela
 - **Archivos:** `ia/__init__.py`, `ia/sanitizer.py`, `ia/CLAUDE.md`, `ia/README.md` (eliminado, reemplazado por CLAUDE.md, mismo patrón que `motor/`), `tests/ia/conftest.py`, `tests/ia/test_sanitizer.py`.

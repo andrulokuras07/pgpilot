@@ -89,6 +89,159 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### C5 + C6 + C7 — validación Pydantic, validación cruzada y modo plantilla
+- **Autor:** David
+- **Archivos:** `ia/validator.py`, `ia/cross_validator.py`, `ia/templates.py`,
+  `ia/explain.py`, `ia/__init__.py`, `ia/CLAUDE.md`,
+  `tests/ia/test_response_validator.py`, `tests/ia/test_cross_validator.py`,
+  `tests/ia/test_templates.py`, `tests/ia/test_explain_orchestrator.py`,
+  `requirements.txt` (agregadas `pydantic>=2.0,<3` y `sqlglot>=25.0,<26`),
+  `PROGRESS.md`.
+- **Notas:** Tres tickets empaquetados en una rama porque entre los tres
+  conforman la capa completa de "obtener una explicación validada para una
+  recomendación", y ninguno se prueba de punta a punta sin los otros dos
+  (el "hecho cuando" de C5 y C7 exige caída a plantilla — necesitamos las
+  plantillas, y el de C6 exige descarte sin crashear — necesitamos el
+  orquestador). **C5 (`validator.py`):** `LLMResponseSchema` Pydantic v2
+  con `explanation: str (min_length=1)`, `suggested_rewrite: str | None`,
+  `confidence: float (ge=0, le=1)`. `parse_llm_response(raw)` es pura: parsea
+  + valida y levanta `LLMResponseInvalid(reason, raw)` ante cualquier falla
+  preservando el texto crudo para C8. `request_validated_explanation(prompt,
+  *, max_retries=1)` orquesta `call_llm` + parse con reintento por backlog;
+  no atrapa `LLMDisabledError`/`LLMError` — eso es trabajo del orquestador.
+  **C6 (`cross_validator.py`):** `cross_validate(response, recommendation,
+  snapshot, *, sandbox_pool=None, sanitized_sql=None) -> CrossValidationResult`.
+  Cuatro verificaciones: (i) la columna del `Recommendation` existe en el
+  snapshot, (ii) si `kind="create_index"`, el nombre del índice no está en
+  uso, (iii) si hay `suggested_rewrite`, parsea con sqlglot, no contiene
+  CREATE INDEX duplicado y no referencia columnas inventadas, (iv) opcional:
+  si se pasa `sandbox_pool`, llama a `sandbox.validate_index_recommendation`
+  y descarta si verdict=`"discarded"`. Conservador por diseño: ante cualquier
+  inconsistencia, falla. **C7 (`templates.py`):** `Explanation` dataclass
+  (mismo shape para LLM y plantilla, distinguido por `source`).
+  `explain_from_template(detection, recommendation)` genera prosa
+  determinística con dos plantillas (CREATE INDEX vs. ANALYZE), insertando
+  los nombres reales del snapshot (R14). La confianza baja a 0.6 sin
+  selectividad; 0.8 con. **Orquestador (`explain.py`):** une los tres.
+  Atrapa `LLMDisabledError`, `LLMError` y `LLMResponseInvalid` →
+  plantilla. Llama a `cross_validate` → si falla → plantilla. Garantía
+  fuerte: nunca propaga excepciones del LLM al backend, R5 cumplido en
+  toda la cadena. `requirements.txt`: agregadas `pydantic>=2.0,<3` y
+  `sqlglot>=25.0,<26` (sqlglot faltaba aunque está en el stack
+  documentado; pydantic ya venía transitiva por fastapi pero explícita
+  evita sorpresas).
+- **Tests:** ✅ 32 unit nuevos verde. Suite total sin integration/llm:
+  **159/159** (127 previos + 32 nuevos). Desglose:
+  - `test_response_validator.py` (10): happy path, suggested_rewrite
+    string, ignore extras, rechazo de JSON malformado (criterio
+    hecho-cuando C5), rechazo de explanation vacío / confidence fuera
+    de rango / falta de explanation, reintenta una vez con éxito,
+    falla tras reintentos agotados, `max_retries=0`.
+  - `test_cross_validator.py` (10): happy sin rewrite, happy con
+    rewrite válido, **rechazo de CREATE INDEX duplicado (criterio
+    hecho-cuando C6)**, columna fantasma, SQL no parseable,
+    `Recommendation` con columna inexistente, `Recommendation` con
+    nombre de índice duplicado, `kind="analyze"` no chequea duplicado,
+    sandbox `validated`/`discarded` mockeados.
+  - `test_templates.py` (5): legibilidad de la prosa, R14 (menciona
+    tabla y columna del snapshot), incluye SQL del motor, plantilla
+    distinta para `analyze`, confianza baja sin selectividad.
+  - `test_explain_orchestrator.py` (7): happy path LLM,
+    **malformado→plantilla (criterio hecho-cuando C5)**,
+    **LLM apagado→plantilla sin llamar al LLM (criterio hecho-cuando
+    C7)**, sin API key→plantilla, cross-validation falla→plantilla,
+    red caída→plantilla.
+
+### Decisiones
+
+#### Orquestador (`ia/explain.py`) tie de C5+C6+C7 en una sola función
+- **Autor:** David
+- **Contexto:** los tres tickets individualmente exponen primitivas
+  (`parse_llm_response`, `cross_validate`, `explain_from_template`),
+  pero el backlog mide "hecho cuando" del C5 y C7 con el sistema completo:
+  "cae a modo plantilla sin crashear", "devuelve recomendación con
+  explicación legible sin llamar al LLM". Ese comportamiento sólo
+  existe si alguien orquesta las tres piezas.
+- **Alternativas:** (a) dejar la orquestación para C9 (endpoint
+  `/analyze`); (b) escribirla en `ia/explain.py` ahora.
+- **Decisión:** (b).
+- **Razón:** C9 va a hacer mucho más que orquestar la explicación
+  (parsing del EXPLAIN, dispatch a detectores, etc.) y meter la
+  lógica de fallback ahí mezclaría responsabilidades. Una función
+  `explain_recommendation` en `ia/` es la unidad natural — el módulo
+  `ia` es exactamente "capa de explicación". Además permite testear
+  los hecho-cuando ahora sin esperar a C9, manteniendo cobertura
+  verificable inmediata.
+- **Trade-off:** si C9 termina necesitando control fino sobre el
+  retry o sobre la decisión de cuándo correr sandbox, va a tener que
+  pasar parámetros explícitos al orquestador (no a tres funciones
+  separadas). Aceptable: la API ya admite `sandbox_pool=None` y
+  `max_retries=1` como kwargs.
+
+#### Validación con sandbox en C6 es opt-in, no obligatoria
+- **Autor:** David
+- **Contexto:** el backlog de C6 lista cuatro verificaciones, una de
+  ellas es "el sandbox confirma que el planner usaría el índice".
+  Pero correr el sandbox es lento (Docker, 5s por análisis) y depende
+  de que el contenedor esté arriba. C3 ya valida la recomendación del
+  motor contra el sandbox antes de que el LLM la vea, así que en el
+  flujo normal la verificación de C6 sería redundante para el caso
+  "índice que ya validó el motor".
+- **Alternativas:** (a) siempre correr sandbox en C6 → robusto pero
+  duplica trabajo de C3 y bloquea los tests unit; (b) nunca correrlo →
+  perdemos defensa contra "el LLM propone un CREATE INDEX en el
+  rewrite que C3 nunca vio"; (c) hacerlo opt-in con `sandbox_pool` kwarg.
+- **Decisión:** (c).
+- **Razón:** preserva la posibilidad cuando el caller la quiera
+  (backend en flujo completo con sandbox arriba) sin imponerla
+  cuando no aplica (tests unit, perfil rápido del backend, modo
+  offline). La verificación estructural sin sandbox (sqlglot +
+  schema) ya descarta el caso del backlog literal ("respuesta del
+  LLM con un índice que ya existe").
+- **Trade-off:** un caller distraído puede omitir `sandbox_pool` y
+  perder defensa profunda. Mitigado en el orquestador
+  `explain_recommendation`, que sí acepta `sandbox_pool` y lo
+  pasa adelante — la decisión queda en C9 (un solo lugar).
+
+#### Pydantic ignora campos extra por default (no usar `model_config = ConfigDict(extra="forbid")`)
+- **Autor:** David
+- **Contexto:** Pydantic v2 default tolera campos extra. Algunos
+  productos endurecen con `extra="forbid"` para que falle ruidoso si
+  el output cambia.
+- **Decisión:** quedarnos con el default (ignorar extras).
+- **Razón:** Anthropic puede agregar metadata al JSON en versiones
+  futuras (ej. campos de provenance) sin que cambie nuestro contrato.
+  Forbid acoplaría nuestra pipeline a no-cambios del modelo, lo que
+  produciría caídas a plantilla *ruidosas* y *sin valor* para el
+  usuario. El criterio del proyecto es: validá lo que TE INTERESA
+  recibir, ignorá lo demás. R3 se cumple validando los tres campos
+  acordados.
+- **Trade-off:** si en el futuro Anthropic envía un campo conflictivo
+  (ej. ya hay un `confidence` interno suyo distinto al nuestro), la
+  tolerancia podría enmascararlo. Defensa: el schema valida el rango
+  `[0, 1]` y el `min_length` de la explanation; un mismatch real
+  emerge ahí.
+
+#### Tests de `ia` renombrados a `test_response_validator.py` / `test_explain_orchestrator.py`
+- **Autor:** David
+- **Contexto:** pytest colecciona módulos por basename cuando no hay
+  `__init__.py` en los paquetes de tests. Los nombres `test_validator.py`
+  y `test_explain.py` ya existen en `tests/sandbox/`, así que copiarlos
+  en `tests/ia/` rompía la colección.
+- **Alternativas:** (a) agregar `__init__.py` a cada subdir de tests
+  para convertirlos en paquetes; (b) renombrar los archivos nuevos.
+- **Decisión:** (b).
+- **Razón:** (a) cambia el comportamiento de imports en todos los
+  módulos de tests (potencial efecto bola de nieve sobre fixtures y
+  conftests). (b) es local a este PR y mantiene la convención
+  existente (un solo subdir con `__init__.py`, el de detectores, que
+  lo necesita para colisión interna). Renombrado con nombres
+  descriptivos del contenido — `test_response_validator.py` (no
+  "test_c5") y `test_explain_orchestrator.py` (no "test_explain").
+- **Trade-off:** un nuevo módulo en el futuro tendrá que recordar
+  la convención. Documentado acá; cuando duela de verdad, se hace
+  el sweep de `__init__.py`.
+
 #### C1 (revisión y arreglos) — evidence simétrico + 3 tests + docs
 - **Autor:** Andrés Angulo
 - **Archivos:** `motor/detectors/seq_scan_on_large_table.py`,

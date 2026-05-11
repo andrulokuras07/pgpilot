@@ -51,6 +51,20 @@ nodo `Plan`. Propaga `json.JSONDecodeError` si el string no es JSON.
 Un nodo del plan. Inmutable (`frozen=True`) para impedir mutaciones
 accidentales en los detectores. Atributos:
 
+### `Detection` (frozen dataclass)
+Resultado común de todos los detectores. Campos:
+- `found: bool` — True si el anti-pattern se detectó al menos una vez.
+- `confidence: float` — en [0, 1]. C1 emite 1.0 (detección determinística).
+- `evidence: dict` — abierto. Convención: `evidence["matches"]` es
+  `list[dict]` con un entry por ocurrencia.
+
+### `detect_seq_scan_on_large_table(plan, snapshot) -> Detection`
+Detector C1. Dispara cuando hay un `Seq Scan` sobre una tabla con
+≥100k filas (`sizes[t].estimated_rows`) y existe un índice btree
+cuya primera columna coincide con la columna del filtro `WHERE` del
+nodo. Cada match en `evidence["matches"]` incluye `table`, `column`,
+`estimated_rows`, `rows_removed_by_filter`, `index_name`, `filter`.
+
 **Comunes a todo nodo:**
 - `node_type: str` — tal cual viene de Postgres (`"Seq Scan"`,
   `"Index Scan"`, etc.).
@@ -112,6 +126,8 @@ Postgres emita (incluyendo `BitmapOr`, `Recursive Union`,
 cobertura en tests y para documentar contra qué se han escrito
 detectores.
 
+
+
 ### Uso típico
 
 ```python
@@ -141,6 +157,10 @@ motor/
 ├── __init__.py     # exporta API pública del módulo
 ├── parser.py       # PlanNode, ExplainResult, parse_explain (B7+B8)
 ├── nodes.py        # find_nodes, KNOWN_NODE_TYPES (B9)
+├── detection.py           # Detection (contrato compartido) (C1)
+├── detectors/
+│   ├── __init__.py
+│   └── seq_scan_on_large_table.py   # C1
 └── CLAUDE.md       # este archivo
 ```
 

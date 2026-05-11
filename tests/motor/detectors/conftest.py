@@ -124,6 +124,163 @@ def snapshot_tags_tabla_pequena() -> dict[str, Any]:
 
 
 @pytest.fixture
+def snapshot_dos_tablas_grandes_con_indice() -> dict[str, Any]:
+    """Dos tablas grandes (`posts`, `comments`) con índice btree sobre la
+    columna del filtro. Permite ejercer la convención `matches: list` en
+    plural sobre un único plan con dos Seq Scans."""
+    return {
+        "schema": {
+            "public.posts": {
+                "schema": "public",
+                "name": "posts",
+                "columns": [
+                    {
+                        "name": "author_id",
+                        "data_type": "integer",
+                        "is_nullable": False,
+                        "ordinal_position": 1,
+                    }
+                ],
+                "indexes": [
+                    {
+                        "name": "idx_posts_author_id",
+                        "columns": ["author_id"],
+                        "method": "btree",
+                        "is_unique": False,
+                        "is_primary": False,
+                    }
+                ],
+                "foreign_keys": [],
+            },
+            "public.comments": {
+                "schema": "public",
+                "name": "comments",
+                "columns": [
+                    {
+                        "name": "post_id",
+                        "data_type": "integer",
+                        "is_nullable": False,
+                        "ordinal_position": 1,
+                    }
+                ],
+                "indexes": [
+                    {
+                        "name": "idx_comments_post_id",
+                        "columns": ["post_id"],
+                        "method": "btree",
+                        "is_unique": False,
+                        "is_primary": False,
+                    }
+                ],
+                "foreign_keys": [],
+            },
+        },
+        "sizes": {
+            "public.posts": {
+                "estimated_rows": 500_000,
+                "total_bytes": 67_000_000,
+                "category": "large",
+            },
+            "public.comments": {
+                "estimated_rows": 2_000_000,
+                "total_bytes": 200_000_000,
+                "category": "large",
+            },
+        },
+        "stats": {},
+    }
+
+
+@pytest.fixture
+def snapshot_posts_con_indice_gin_en_author_id() -> dict[str, Any]:
+    """Tabla grande con índice GIN sobre `author_id`. GIN no acelera
+    comparaciones de igualdad escalar; C1 debe abstenerse aunque exista
+    "un índice" sobre la columna."""
+    return {
+        "schema": {
+            "public.posts": {
+                "schema": "public",
+                "name": "posts",
+                "columns": [
+                    {
+                        "name": "author_id",
+                        "data_type": "integer",
+                        "is_nullable": False,
+                        "ordinal_position": 1,
+                    }
+                ],
+                "indexes": [
+                    {
+                        "name": "idx_posts_author_id_gin",
+                        "columns": ["author_id"],
+                        "method": "gin",
+                        "is_unique": False,
+                        "is_primary": False,
+                    }
+                ],
+                "foreign_keys": [],
+            },
+        },
+        "sizes": {
+            "public.posts": {
+                "estimated_rows": 500_000,
+                "total_bytes": 67_000_000,
+                "category": "large",
+            },
+        },
+        "stats": {},
+    }
+
+
+@pytest.fixture
+def snapshot_posts_con_indice_compuesto() -> dict[str, Any]:
+    """Tabla grande con índice btree `(created_at, author_id)`. El filtro
+    es sobre `author_id` solo. Un índice (a, b) no acelera filtros sobre
+    `b` aislada — el planner ignora ese índice deliberadamente. C1 NO
+    debe disparar."""
+    return {
+        "schema": {
+            "public.posts": {
+                "schema": "public",
+                "name": "posts",
+                "columns": [
+                    {
+                        "name": "created_at",
+                        "data_type": "timestamp",
+                        "is_nullable": False,
+                        "ordinal_position": 1,
+                    },
+                    {
+                        "name": "author_id",
+                        "data_type": "integer",
+                        "is_nullable": False,
+                        "ordinal_position": 2,
+                    },
+                ],
+                "indexes": [
+                    {
+                        "name": "idx_posts_created_author",
+                        "columns": ["created_at", "author_id"],
+                        "method": "btree",
+                        "is_unique": False,
+                        "is_primary": False,
+                    }
+                ],
+                "foreign_keys": [],
+            },
+        },
+        "sizes": {
+            "public.posts": {
+                "estimated_rows": 500_000,
+                "total_bytes": 67_000_000,
+                "category": "large",
+            },
+        },
+        "stats": {},
+    }
+
+
+@pytest.fixture
 def snapshot_posts_sin_indice_en_author_id() -> dict[str, Any]:
     """Caso negativo C1 (escenario distinto): tabla grande PERO sin
     índice en la columna del filtro. Esto es Q01 puro de AppDB —

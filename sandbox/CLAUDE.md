@@ -71,6 +71,62 @@ Lo que hace, en orden, dentro de una sola transacción:
 ### `drop_sandbox_schema(pool, schema_name) -> None`
 `DROP SCHEMA IF EXISTS ... CASCADE`. Idempotente.
 
+### `validate_index_recommendation(pool, snapshot, query, recommendation, *, timeout_seconds=5.0, schema_name=None) -> ValidationResult`
+Validador C3. Recibe una `motor.Recommendation` y la prueba en el
+sandbox antes de devolvérsela al frontend. Flujo:
+1. Si `recommendation.kind == "analyze"`: retorna verdict
+   `"skipped_no_sandbox_signal"` sin tocar el pool (un ANALYZE sobre
+   tablas vacías no informa — la prosa del motor pasa sin aval del
+   sandbox).
+2. Monta schema con `setup_sandbox_schema`.
+3. `EXPLAIN (FORMAT JSON)` de `query` → plan_before.
+4. `CREATE INDEX <recommendation.index_name>_c3 ON <schema>.<tabla>
+   USING <method> (<column>)` en el schema temporal. El sufijo `_c3`
+   evita colisión si la recomendación apuntase a un nombre ya existente
+   en el schema (defensivo).
+5. EXPLAIN otra vez → plan_after.
+6. Compara con `verdict_from_plans`; dropea el schema en `finally`.
+
+Diseño: el discriminador es el **tipo de nodo** sobre la tabla
+recomendada, no el costo absoluto. En el sandbox las tablas están
+vacías y `pg_class.relpages`/`reltuples` falseados conviven con el
+tamaño físico del archivo, que el planner consulta y empuja costos a
+~0.
+
+**Truco para forzar la señal de tipo de nodo:** el EXPLAIN "after"
+corre con `SET LOCAL enable_seqscan = off`. Verificado empíricamente
+(2026-05-11) que sin este flag el planner prefiere Seq Scan aun con
+el índice presente (costo=0 por archivo vacío), perdiendo la señal
+estructural. Con el flag, el planner emite `Index Scan` cuando el
+índice es aplicable y mantiene `Seq Scan` con `Disabled: true` cuando
+no lo es (caso "índice irrelevante al filtro" — sigue siendo Seq Scan
+porque no hay alternativa). Esto preserva el contraste positivo vs.
+negativo que C3 necesita.
+
+**Semántica acotada de `validated`:** dado el truco anterior, "validated"
+no significa "el planner elegirá este índice en producción", significa
+"el índice es **estructuralmente aplicable** al filtro de la query".
+Falta validar selectividad real para afirmar lo primero — eso requiere
+filas sintéticas o stats por columna (`pg_restore_attribute_stats`)
+y queda como trabajo futuro. Para Demo Day v1 esta semántica es
+suficiente: descarta los CREATE INDEX absurdos (mal columna, mal
+método) sin pretender más de lo que el sandbox vacío puede afirmar.
+
+### `ValidationResult` (frozen dataclass)
+- `verdict: "validated" | "discarded" | "skipped_no_sandbox_signal"`
+- `reason: str` — prosa para el usuario y para logs.
+- `node_type_before`, `node_type_after: str | None` — tipos del nodo
+  de scan sobre la tabla en cada corrida. `None` si la query no la
+  tocó (descarte por inconsistencia query/recomendación).
+- `cost_before`, `cost_after: float | None` — `total_cost` del nodo
+  de scan. Útiles para logs y para que C4 pueda mencionarlos al LLM;
+  **no se usan para decidir el veredicto** (ver razón arriba).
+
+### `verdict_from_plans(plan_before, plan_after, table_key) -> ValidationResult`
+Función pura. Permite testear la lógica de veredicto sin levantar el
+sandbox. La usan los unit tests de C3 y la usa internamente
+`validate_index_recommendation`.
+
 ### `explain_in_sandbox(pool, snapshot, query, *, timeout_seconds=5.0, schema_name=None) -> motor.ExplainResult`
 Orquesta el flujo completo:
 1. Monta un schema temporal con `setup_sandbox_schema`.
@@ -117,6 +173,7 @@ sandbox/
 ├── pool.py         # create_sandbox_pool (sin read-only, con timeout)
 ├── setup.py        # setup_sandbox_schema, drop_sandbox_schema (B15)
 ├── explain.py      # explain_in_sandbox (B16)
+├── validator.py    # validate_index_recommendation, verdict_from_plans (C3)
 └── CLAUDE.md       # este archivo
 ```
 

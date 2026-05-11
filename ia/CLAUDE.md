@@ -10,7 +10,7 @@ Este módulo es la frontera entre el código determinístico del proyecto y el L
 
 - ✅ B10 — sanitizador de literales (`sanitizer.py`)
 - ✅ B11 — test de privacidad del sanitizador (`tests/ia/test_privacidad.py`)
-- ⬜ C4 — prompt estructurado al LLM
+- ✅ C4 — prompt estructurado al LLM (`prompt.py` + `llm.py`)
 - ⬜ C5 — validación de respuesta con Pydantic
 - ⬜ C6 — validación cruzada de sugerencias
 - ⬜ C7 — modo "LLM apagado" con plantillas
@@ -21,8 +21,48 @@ Este módulo es la frontera entre el código determinístico del proyecto y el L
 ## API pública
 
 ```python
-from ia import sanitize, restore, SanitizedQuery
+from ia import (
+    sanitize, restore, SanitizedQuery,
+    build_explanation_prompt, LLMPrompt,
+    call_llm, LLMError, LLMDisabledError,
+)
 ```
+
+### `build_explanation_prompt(detection, plan, recommendation, sanitized_query) -> LLMPrompt` (C4)
+
+Función pura. Recibe los outputs de C1 + parser + C2 + sanitizador y
+arma un `LLMPrompt(system, messages, expected_output_schema)` listo
+para `call_llm`. **Rechaza con `TypeError` si `sanitized_query` no es
+un `SanitizedQuery`** — defensa en profundidad para R4. El prompt
+sistémico le indica al LLM: explicar (no re-detectar), proponer rewrite
+opcional, devolver JSON estricto con
+`{explanation, suggested_rewrite, confidence}`.
+
+El user-turn lleva, en JSON compacto y determinístico:
+- `detection`: `{found, confidence, matches}`
+- `recommendation`: todos los campos de `motor.Recommendation`
+- `plan_summary`: lista de nodos con campos macro (no el árbol crudo)
+- `sanitized_query`: el SQL con placeholders
+- `literal_placeholders`: `{placeholder → tipo}`, NUNCA el valor original
+
+### `call_llm(prompt, *, model=..., max_tokens=..., timeout=..., api_key=None) -> str` (C4)
+
+Llama al endpoint `messages` de Anthropic vía `httpx`. Devuelve el
+texto crudo de la respuesta (sin parsear — C5 valida con Pydantic).
+
+- Lee `ANTHROPIC_API_KEY` del entorno si no se pasa explícito.
+- Respeta `LLM_ENABLED=false` (R5): levanta `LLMDisabledError`.
+- Sin API key: también levanta `LLMDisabledError`.
+- Errores HTTP / de red: levanta `LLMError`.
+
+Modelo default: `claude-sonnet-4-6`. Configurable por-call.
+
+**Defensa en profundidad: strip de fences markdown.** Verificado
+empíricamente (2026-05-11, sonnet-4-6) que Claude tiende a envolver
+el JSON en ` ```json ... ``` ` aun cuando el system-prompt lo
+prohíbe explícito. `_extract_text` quita la fence cuando envuelve
+todo el output. Fences embebidas dentro de texto (ej. ejemplo de
+SQL dentro de prosa) se preservan tal cual.
 
 ### `sanitize(sql: str) -> SanitizedQuery`
 
@@ -61,8 +101,20 @@ Reconstruye el SQL original. Solo para debug local. Nunca usar el output de `res
 
 ## Tests
 
-`tests/ia/test_sanitizer.py`. Unitarios sin marker `integration` (no requieren AppDB ni Docker).
-
 ```bash
-pytest tests/ia/ -v
+# Unit tests (no AppDB, no API key):
+pytest tests/ia -m "not integration and not llm"
+
+# LLM real (requiere ANTHROPIC_API_KEY exportada):
+ANTHROPIC_API_KEY=sk-... pytest tests/ia -m llm
 ```
+
+- `tests/ia/test_sanitizer.py` — sanitizador (B10).
+- `tests/ia/test_privacidad.py` — grep externo sobre el output (B11).
+- `tests/ia/test_prompt.py` — builder C4 (forma del prompt, R4 defensa
+  en profundidad, determinismo).
+- `tests/ia/test_llm.py` — cliente C4. Unit tests con `monkeypatch`
+  sobre `httpx.post` cubren happy path / errores / R5. Un test
+  `@pytest.mark.llm` manda un prompt REAL al servicio y verifica que
+  responde con el JSON acordado (criterio "hecho cuando" del C4).
+  Skip automático si no hay `ANTHROPIC_API_KEY`.

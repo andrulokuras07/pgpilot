@@ -65,6 +65,63 @@ cuya primera columna coincide con la columna del filtro `WHERE` del
 nodo. Cada match en `evidence["matches"]` incluye `table`, `column`,
 `estimated_rows`, `rows_removed_by_filter`, `index_name`, `filter`.
 
+**Limitaciones conocidas:**
+
+- **(D1) Schema implícito en la resolución de tabla.** El plan trae
+  `Relation Name = "posts"` (sin schema). La búsqueda contra el
+  snapshot toma el primer key que termine en `.posts`, así que si en
+  el futuro hay homónimos (`public.posts` y `archive.posts`) el
+  detector elige por orden de iteración. Para AppDB v1 no aplica
+  (todo está en `public`). Solución cuando importe: capturar `Schema`
+  en `PlanNode` y usarlo aquí.
+- **(D2) Columna del filtro = primera coincidencia del regex.** El
+  detector extrae la primera columna que aparece en `node.filter`
+  (`(col = X)`). Si el filtro es `((col1 = 1) AND (col2 = 2))` y el
+  índice está sobre `col2`, C1 NO dispara. En AppDB v1 todas las
+  queries plantadas son filtros monocolumna, así que no quema; cuando
+  lo haga, la solución limpia es parsear `node.filter` con `sqlglot`
+  (ya está en el stack del proyecto) y buscar todas las columnas
+  con índice utilizable.
+- El detector se abstiene ante filtros que no matchean su regex
+  simple (`LIKE`, `IS NULL`, casts `((col)::tipo)`). Falso negativo
+  por diseño: prefiere no recomendar a recomendar mal.
+
+### `Recommendation` (frozen dataclass) — C2
+Salida del recomendador. Campos:
+- `kind: Literal["create_index", "analyze"]` — la acción sugerida.
+  `"analyze"` aparece cuando ya existe un índice equivalente: el
+  problema probablemente es stats desactualizadas, no índice faltante.
+- `table: str` — clave `"<schema>.<tabla>"` del snapshot.
+- `column: str` — columna recomendada.
+- `index_method: str` — siempre `"btree"` en v1 (selectividad simple).
+- `index_name: str` — nombre sugerido para el índice nuevo
+  (`idx_<tabla>_<columna>`). En el caso `analyze` apunta al nombre del
+  índice existente para que la prosa lo pueda referenciar.
+- `create_index_sql: str` — SQL final listo para mostrar al usuario.
+  En `kind="analyze"` es `ANALYZE <schema>.<tabla>;` (no CREATE INDEX).
+- `justification: str` — explicación textual derivada de
+  `n_distinct`/`null_frac`/tamaño.
+- `expected_impact: str` — prosa corta con el impacto esperado.
+- `selectivity: float | None` — selectividad estimada del filtro (0..1).
+  `None` si la tabla nunca tuvo `ANALYZE`.
+
+### `recommend_for_seq_scan_on_large_table(detection, snapshot) -> list[Recommendation]`
+Recomendador C2. Recibe una `Detection` de C1 y produce una lista de
+`Recommendation`, una por entrada en `evidence["matches"]`. Si
+`detection.found is False`, devuelve `[]`. Cada match se traduce a:
+
+- Si ya existe un índice btree sobre `(column, ...)` (cualquier
+  método btree donde la primera columna sea la del filtro): emite
+  `kind="analyze"` con SQL `ANALYZE <tabla>;` y justificación
+  apuntando a stats desactualizadas.
+- Si NO existe ese índice: emite `kind="create_index"` con SQL
+  `CREATE INDEX <name> ON <tabla> (<columna>);`.
+
+La selectividad se calcula a partir de `snapshot["stats"][table][col]`:
+`n_distinct > 0` → `1 / n_distinct`; `n_distinct < 0` → `-n_distinct`
+(convención Postgres: negativo = ratio). Si no hay stats, queda en
+`None` y la justificación lo declara explícito.
+
 **Comunes a todo nodo:**
 - `node_type: str` — tal cual viene de Postgres (`"Seq Scan"`,
   `"Index Scan"`, etc.).
@@ -157,18 +214,13 @@ motor/
 ├── __init__.py     # exporta API pública del módulo
 ├── parser.py       # PlanNode, ExplainResult, parse_explain (B7+B8)
 ├── nodes.py        # find_nodes, KNOWN_NODE_TYPES (B9)
-├── detection.py           # Detection (contrato compartido) (C1)
+├── detection.py    # Detection (contrato compartido) (C1)
 ├── detectors/
 │   ├── __init__.py
 │   └── seq_scan_on_large_table.py   # C1
+├── recommender.py  # Recommendation + recommenders por detector (C2)
 └── CLAUDE.md       # este archivo
 ```
-
-A medida que B17+ aterricen, se sumarán:
-- `detectors/` — un archivo por anti-pattern (ej.
-  `detect_seq_scan_on_large_table.py`)
-- `recommender.py` — generador de candidatos a índice
-- `detection.py` — el dataclass `Detection(found, confidence, evidence)`
 
 ## Cómo extender
 
@@ -184,15 +236,43 @@ A medida que B17+ aterricen, se sumarán:
    verifique los campos específicos.
 
 ### Agregar un detector
-*(Pendiente: la convención formal sale en B17. Borrador:)*
+
+Convención cuajada con C1 (ver `detectors/seq_scan_on_large_table.py`):
+
 1. Un archivo nuevo en `motor/detectors/` con función pura
-   `detect_X(plan: ExplainResult, schema: dict, sizes: dict) -> Detection`.
-2. La función usa `find_nodes` para localizar nodos sospechosos y
-   compara contra el schema/stats.
-3. Devuelve `Detection(found, confidence, evidence)`.
-4. Test "happy path" + test "negativo" (caso donde NO debe disparar)
-   en `tests/motor/detectors/`.
-5. Registrar el detector en algún index del `motor/__init__.py`.
+   `detect_X(plan: ExplainResult | PlanNode, snapshot: SchemaSnapshot) -> Detection`.
+   - **Firma**: dos argumentos. El `snapshot` viene completo (no se
+     descompone en `schema`/`sizes`/`stats` separados) — los detectores
+     hacen sus propios `snapshot.get("schema", {})` según lo que necesiten.
+   - **Pura**: no toca disco ni red; solo lee de los argumentos.
+2. Internamente usa `find_nodes` para localizar candidatos. Cualquier
+   inspección posterior va sobre los atributos tipados de `PlanNode`
+   (R2: nunca regex sobre el SQL crudo ni sobre el texto entero del
+   EXPLAIN; el regex sobre campos específicos como `node.filter` está
+   permitido cuando el texto lo emite Postgres y es estable — ver el
+   uso de `_FILTER_COLUMN_RE` en C1 con su justificación).
+3. **Convención de `evidence`**: siempre devuelve
+   `evidence={"matches": [...]}`. La lista puede estar vacía cuando
+   `found=False`. Esto permite que los callers iteren sin chequear
+   `found` primero y elimina ramas de `KeyError`.
+4. Cada entrada de `matches` es un `dict` libre con los hechos crudos
+   que sostienen la detección. Convenciones útiles:
+   - `table: str` — `"<schema>.<tabla>"`, misma clave del snapshot
+   - `column: str` — columna implicada cuando aplica
+   - campos extra específicos del detector (ej. `index_name`,
+     `estimated_rows`, `filter`)
+5. **Tests** en `tests/motor/detectors/test_X.py`:
+   - Happy path (criterio "hecho cuando" del backlog)
+   - Negativo (caso donde NO debe disparar)
+   - Frontera con detectores hermanos (defensa contra solapamiento)
+   - Robustez (input degenerado: `filter=None`, `relation_name=None`,
+     snapshot sin la tabla, etc.)
+   - Fixtures de snapshot sintético en
+     `tests/motor/detectors/conftest.py`; planes en
+     `tests/motor/fixtures/*.json` (reales de AppDB) o sintéticos
+     inline en el test cuando sirven mejor.
+6. Registrar en `motor/detectors/__init__.py` y re-exportar desde
+   `motor/__init__.py`.
 
 ## Decisiones específicas del módulo
 

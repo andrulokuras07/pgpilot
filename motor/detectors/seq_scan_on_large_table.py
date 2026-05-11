@@ -115,10 +115,15 @@ def detect_seq_scan_on_large_table(
             }
         )
 
+    # `evidence` siempre lleva la misma forma: la clave `matches` existe
+    # aun cuando la detección no dispara. Esto cierra la convención del
+    # contrato compartido por todos los detectores: un caller puede
+    # iterar `detection.evidence["matches"]` sin chequear `found` primero
+    # y sin caer en KeyError. Detectores futuros (C2..C12) heredan el patrón.
     return Detection(
         found=bool(matches),
         confidence=1.0 if matches else 0.0,
-        evidence={"matches": matches} if matches else {},
+        evidence={"matches": matches},
     )
 
 

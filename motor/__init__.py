@@ -9,6 +9,7 @@ from motor.detection import Detection
 from motor.detectors import detect_seq_scan_on_large_table
 from motor.nodes import KNOWN_NODE_TYPES, find_nodes
 from motor.parser import ExplainResult, PlanNode, parse_explain
+from motor.recommender import Recommendation, recommend_for_seq_scan_on_large_table
 
 __all__ = [
     "ExplainResult",
@@ -18,4 +19,6 @@ __all__ = [
     "KNOWN_NODE_TYPES",
     "Detection",
     "detect_seq_scan_on_large_table",
+    "Recommendation",
+    "recommend_for_seq_scan_on_large_table",
 ]

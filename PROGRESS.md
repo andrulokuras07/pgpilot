@@ -21,7 +21,7 @@ Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` par
 ## Estado actual del proyecto
 
 ### Cobertura de detección
-- **AppDB v1:** 0 / 20 queries detectadas (objetivo: ≥16)
+- **AppDB v1:** 1 / 20 queries detectadas (C1; objetivo: ≥16)
 - **Falsos positivos:** sin medir todavía (objetivo: <3)
 - **AppDB v2:** sin probar (objetivo: ≥4 de 5 queries nuevas)
 
@@ -82,6 +82,244 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ## Bitácora
 
 *(Las entradas reales del proyecto van debajo de esta línea. Las más recientes arriba.)*
+
+---
+
+## 2026-05-11
+
+### Avances
+
+#### C1 (revisión y arreglos) — evidence simétrico + 3 tests + docs
+- **Autor:** Andrés Angulo
+- **Archivos:** `motor/detectors/seq_scan_on_large_table.py`,
+  `tests/motor/detectors/test_seq_scan_on_large_table.py`,
+  `tests/motor/detectors/conftest.py`, `motor/CLAUDE.md`.
+- **Notas:** Revisión completa de C1 (mergeado por Regina el 2026-05-10) antes de
+  arrancar C2..C4. Dos fixes bloqueantes y deuda documentada. **P1 (evidence asimétrico):**
+  `Detection.evidence` ahora es siempre `{"matches": [...]}` (lista vacía cuando no
+  dispara) en lugar de `{}`. Esto fija la convención antes de que C2..C12 la copien:
+  los callers iteran `evidence["matches"]` sin chequear `found` primero, sin
+  KeyError. **D3 (tests faltantes):** tres tests nuevos para ramas sin cubrir —
+  dos Seq Scans problemáticos en un mismo plan (ejerce `matches` en plural),
+  índice GIN sobre la columna del filtro (ejerce el filtro por `method != "btree"`),
+  e índice compuesto `(created_at, author_id)` con filtro solo sobre `author_id`
+  (ejerce la condición `cols[0] == column` en su rama falsa). **P2 + deuda:**
+  `motor/CLAUDE.md` reescrito: borrado el párrafo leftover "A medida que B17+
+  aterricen", reescrita "Cómo extender > Agregar un detector" con la convención
+  real cuajada por C1 (firma `(plan, snapshot)`, `evidence["matches"]: list`),
+  documentadas las limitaciones D1 (homónimos de tabla — usa primer match)
+  y D2 (regex captura solo la primera columna del filtro) como deuda con plan
+  de mitigación.
+- **Tests:** ✅ 8/8 C1 verde (5 originales con assert ajustado + 3 nuevos).
+
+#### C2 — Recomendador de índice básico
+- **Autor:** Andrés Angulo
+- **Archivos:** `motor/recommender.py`, `motor/__init__.py`, `motor/CLAUDE.md`,
+  `tests/motor/test_recommender.py`.
+- **Notas:** `recommend_for_seq_scan_on_large_table(detection, snapshot)` devuelve
+  una `list[Recommendation]`, una por entrada en `evidence["matches"]`. Función
+  pura: cero LLM, cero red, cero disco. **Diseño dual `kind`:** la recomendación
+  detecta si ya existe un índice btree equivalente sobre la columna y, si sí,
+  emite `kind="analyze"` con SQL `ANALYZE <tabla>;` y justificación apuntando
+  a stats desactualizadas. Si no existe, emite `kind="create_index"` con
+  `CREATE INDEX idx_<tabla>_<columna> ON <schema>.<tabla> (<columna>);` con
+  identificadores citados. Esta dualidad cubre tanto el scope actual de C1
+  ("índice presente y planner lo ignora" → ANALYZE) como detectores futuros
+  del estilo "missing index" sin reescribir C2. **Selectividad** se calcula
+  desde `snapshot["stats"][table][col]`: `n_distinct > 0` ⇒ `1/n_distinct`;
+  `n_distinct < 0` ⇒ ratio sobre `estimated_rows` (convención Postgres);
+  `None` cuando la tabla nunca tuvo ANALYZE. **Justificación textual** incluye
+  rows + selectividad + nota sobre índice parcial si `null_frac > 50%`. R14
+  estrictamente respetado: nombres de tabla/columna salen de la detección.
+- **Tests:** ✅ 9/9 verde — happy path create_index, kind="analyze" cuando
+  el índice ya existe, N matches → N recomendaciones, fallback sin stats,
+  null_frac alto sugiere índice parcial, inmutabilidad del dataclass,
+  selectividad con n_distinct negativo, isinstance del re-export.
+
+#### C3 — Validación con sandbox
+- **Autor:** Andrés Angulo
+- **Archivos:** `sandbox/validator.py`, `sandbox/__init__.py`, `sandbox/CLAUDE.md`,
+  `tests/sandbox/test_validator.py`.
+- **Notas:** `validate_index_recommendation(pool, snapshot, query, recommendation)`
+  devuelve `ValidationResult(verdict, reason, node_type_before/_after,
+  cost_before/_after)`. El veredicto usa **cambio de tipo de nodo** sobre la
+  tabla afectada, no costo absoluto — decisión heredada del trade-off de
+  B15/B16 (sandbox vacío colapsa costos a ~0). Verdicts: `validated`
+  (Seq Scan → Index/Bitmap (Heap|Index|Only) Scan), `discarded` (mismo tipo
+  de nodo o tipo inesperado), `skipped_no_sandbox_signal` (cuando
+  `recommendation.kind == "analyze"`: un ANALYZE sobre tablas vacías no
+  produce señal comparable; el short-circuit evita tocar el sandbox).
+  **Separación testeabilidad/orquestación:** `verdict_from_plans` es función
+  pura sobre dos `ExplainResult` — los unit tests la cubren con planes
+  sintéticos sin necesidad de Docker. La orquestación
+  (`validate_index_recommendation`) maneja setup/CREATE INDEX/teardown con
+  cleanup en `try/finally`, y está cubierta por dos tests
+  `@pytest.mark.integration`. El CREATE INDEX en sandbox usa
+  `recommendation.index_name + "_c3"` para evitar colisión con índices
+  preexistentes del snapshot, e identificadores citados (defensa contra
+  nombres con mayúsculas/caracteres especiales).
+- **Tests:** ✅ 7/7 unit verde + 2 integration (cubiertos por `@pytest.mark.integration`,
+  requieren `docker compose up appdb sandbox` para correrse — consistente con
+  la convención del módulo). Suite total sin integration/llm: **124/124**.
+
+#### C4 — Prompt estructurado al LLM v1
+- **Autor:** Andrés Angulo
+- **Archivos:** `ia/prompt.py`, `ia/llm.py`, `ia/__init__.py`, `ia/CLAUDE.md`,
+  `tests/ia/test_prompt.py`, `tests/ia/test_llm.py`, `pyproject.toml`
+  (marker `llm` agregado).
+- **Notas:** **`build_explanation_prompt(detection, plan, recommendation,
+  sanitized_query) -> LLMPrompt`** (puro). El system-prompt establece rol
+  pedagógico y guardrails R1: el LLM no re-detecta, no inventa nombres, no
+  expone literales, y devuelve JSON estricto
+  `{explanation, suggested_rewrite, confidence}`. El user-turn lleva un payload
+  JSON compacto y determinístico (`sort_keys=True`) con detección, recomendación,
+  resumen del plan (DFS pre-order) y la query sanitizada + índice de placeholders
+  (placeholder → tipo, NUNCA el valor original). **Defensa R4 en profundidad:**
+  el builder levanta `TypeError` si el caller intenta mandar un `str` en lugar
+  de un `SanitizedQuery`. **`call_llm(prompt, ...) -> str`**: cliente HTTP via
+  `httpx` directo a `api.anthropic.com/v1/messages`. No agregamos el SDK de
+  Anthropic (httpx ya está en el stack para tests/FastAPI; mantenemos
+  dependencias chicas). Respeta R5: `LLM_ENABLED=false` o `ANTHROPIC_API_KEY`
+  ausente lanzan `LLMDisabledError` (excepción específica para que C7 la
+  atrape y caiga a plantillas). Errores HTTP/red → `LLMError`. Devuelve el
+  texto crudo sin parsear (C5 valida con Pydantic). Modelo default:
+  `claude-sonnet-4-5`.
+- **Tests:** ✅ 13/13 unit verde — 8 del prompt (forma, schema esperado para C5,
+  determinismo, R4 defensa, privacidad end-to-end, placeholder index sin valor)
+  + 5 del cliente (R5 con `LLM_ENABLED=false`, R5 sin API key, `_extract_text`
+  con múltiples bloques, status no-2xx → LLMError, red caída → LLMError, happy
+  path simulado con `monkeypatch` sobre `httpx.post`). Un test con
+  `@pytest.mark.llm` cubre el "hecho cuando" del backlog C4 (llamada real al
+  LLM con JSON parseable); skip automático sin `ANTHROPIC_API_KEY`.
+
+### Decisiones
+
+#### C2 emite `ANALYZE` cuando el índice equivalente ya existe
+- **Autor:** Andrés Angulo
+- **Contexto:** el backlog de C2 literalmente dice "SQL del CREATE INDEX",
+  pero C1 (como está implementado por Regina) solo dispara cuando el índice
+  YA EXISTE y el planner lo ignora. Recomendar crear el mismo índice otra
+  vez sería ruido. Tres opciones evaluadas: (a) C2 siempre emite CREATE
+  INDEX y deja que C3 lo descarte; (b) extender el scope de C1 para que
+  cubra también el caso "missing index" y entonces CREATE INDEX siempre
+  tiene sentido; (c) C2 detecta el caso y bifurca a ANALYZE.
+- **Alternativas:** (a), (b), (c).
+- **Decisión:** opción (c). `Recommendation.kind` es
+  `Literal["create_index", "analyze"]`. Cuando el índice btree con la columna
+  del filtro como primera columna ya existe en el snapshot, el recomendador
+  emite ANALYZE con prosa apuntando a stats desactualizadas. Cuando no
+  existe, CREATE INDEX.
+- **Razón:** opción (a) genera ruido visible en el frontend (recomendaciones
+  que el sandbox siempre descarta); opción (b) habría requerido rescribir C1
+  (fuera de scope: el usuario pidió arreglos puntuales, no cambio de scope).
+  Opción (c) es honesta: cuando el índice existe, la acción correcta MUY
+  probablemente es refrescar stats (`VACUUM ANALYZE`), no crear un duplicado.
+  Y deja a C2 listo para futuros detectores "missing index" sin reescribirse.
+- **Trade-off:** C3 no puede validar las recomendaciones de tipo ANALYZE en
+  sandbox (tablas vacías → ANALYZE no informa). Marcamos esas como
+  `verdict="skipped_no_sandbox_signal"` y la prosa del motor pasa al usuario
+  sin aval del sandbox. Costo aceptable porque (i) la prosa de C2 es
+  determinística y revisada, (ii) la acción ANALYZE es de bajo riesgo.
+
+#### C3 fuerza `enable_seqscan = off` en el EXPLAIN "after"
+- **Autor:** Andrés Angulo
+- **Contexto:** la primera versión de C3 hacía `EXPLAIN before / CREATE
+  INDEX / EXPLAIN after` y comparaba tipos de nodo. Al correrla contra
+  el sandbox real (2026-05-11) el happy path falló: con tabla vacía
+  + índice nuevo, el planner SIGUIÓ eligiendo Seq Scan. Verificado
+  empíricamente con probe en psql: `total_cost=0.00`, `plan_rows=1`,
+  aun con `pg_restore_relation_stats` falseando `reltuples=5_000_000`.
+  El planner consulta el tamaño físico del archivo (vacío) y eso
+  predomina sobre `pg_class`. Esto invalida la asunción de B15+B16
+  "los tipos de nodo sí responden a la presencia de índices" para el
+  caso de C3 (filtros con selectividad estimada por default).
+- **Alternativas:** (a) insertar filas sintéticas para inflar el
+  archivo físico; (b) llamar `pg_restore_attribute_stats` por columna
+  para que el planner tenga selectividad sin necesidad de datos
+  físicos; (c) forzar `SET LOCAL enable_seqscan = off` solo en el
+  EXPLAIN "after" para extraer la señal estructural directamente.
+- **Decisión:** opción (c) para v1.
+- **Razón:** con `enable_seqscan = off`, el planner emite Index/Bitmap
+  Scan si el índice es estructuralmente aplicable, y mantiene Seq Scan
+  con `Disabled: true` cuando no hay alternativa (caso negativo:
+  índice irrelevante al filtro). Esto preserva el contraste positivo
+  vs. negativo que necesitamos. (a) y (b) son trabajo significativo
+  (generar datos por tipo de columna o calcular MCV/n_distinct
+  sintéticos) sin ganancia adicional para Demo Day.
+- **Trade-off:** la semántica de `validated` se acota a "el índice es
+  estructuralmente aplicable al filtro", no "el planner lo elegiría en
+  producción" — eso último requeriría (a) o (b). Documentado
+  explícitamente en `sandbox/CLAUDE.md` para que C2/C4/frontend no
+  exageren la afirmación al usuario. Atrapa correctamente los casos
+  problemáticos (CREATE INDEX sobre columna equivocada, método
+  incompatible); deja un pequeño falso positivo posible (índice cuya
+  selectividad real sería pobre).
+
+#### C3 decide por cambio de tipo de nodo, no por costo
+- **Autor:** Andrés Angulo
+- **Contexto:** sandbox monta tablas vacías (R6). El planner consulta el
+  tamaño físico del archivo y, para vacíos, colapsa costos a ~0 aun con
+  `pg_restore_relation_stats` falseando `pg_class`. Comparar
+  `total_cost_before` vs `total_cost_after` no informa en este régimen
+  (limitación documentada en `sandbox/CLAUDE.md` desde B15+B16).
+- **Alternativas:** (a) insertar filas sintéticas acotadas para inflar el
+  archivo físico y permitir comparar costos; (b) decidir por cambio de tipo
+  de nodo (Seq Scan → Index/Bitmap *Scan); (c) ambas.
+- **Decisión:** opción (b) para v1.
+- **Razón:** los TIPOS de nodo sí responden a presencia de índices aun con
+  tablas vacías (verificado empíricamente en B15+B16). Para C1 + C2, la
+  pregunta operativa es "¿el planner usa el índice o no?" — y eso se lee
+  directo del tipo de nodo. Insertar datos sintéticos (opción a) requiere
+  pensar cuántas filas, qué distribución, qué correlación — engineering
+  significativo que no agrega valor a Demo Day. `cost_before` y `cost_after`
+  se guardan en `ValidationResult` para logs y para que C4 pueda mostrarlos
+  al LLM, pero NO se usan para decidir el veredicto.
+- **Trade-off:** si en el futuro hay una recomendación que mantiene el tipo
+  de nodo pero baja costos (ej. cambio de índice covering vs no-covering),
+  C3 v1 la descarta. No es un caso real para AppDB v1; se atiende cuando
+  aparezca.
+
+#### `_extract_text` quita fences markdown del JSON del LLM
+- **Autor:** Andrés Angulo
+- **Contexto:** primera prueba del test LLM real (2026-05-11) con
+  `claude-sonnet-4-6` mostró que el modelo envuelve el JSON en
+  ` ```json ... ``` ` aun cuando el system-prompt lo prohíbe explícito.
+  El JSON interior fue perfecto (R1+R4+R14 respetados, 3 campos
+  correctos en español, `confidence=0.93`); solo la envoltura
+  markdown rompía `json.loads`.
+- **Alternativas:** (a) prefill del turno de asistente con `{` (forzar
+  que Claude continúe el JSON desde adentro); (b) endurecer aún más
+  el system-prompt con ejemplo del output esperado; (c) strip de
+  fences en la capa de transporte (`_extract_text`); (d) delegar la
+  limpieza a C5.
+- **Decisión:** opción (c). `_extract_text` ahora hace strip de
+  fences markdown cuando envuelven TODO el output. Fences embebidas
+  (ej. SQL de ejemplo dentro de prosa) se preservan.
+- **Razón:** (a) es elegante pero acopla la solución a un modelo
+  específico (la API permite prefill, pero el parser tendría que
+  conocer el caracter prefilled); (b) ya lo intentamos y no fue
+  suficiente; (d) duplicaría sanitización entre transporte y
+  validación. (c) es defensa en profundidad: el caller siempre
+  recibe texto utilizable, sin importar qué LLM responde, y C5
+  (Pydantic) seguirá validando el contenido. Robusto a otros
+  modelos / proveedores futuros.
+- **Trade-off:** si algún día queremos que la respuesta del LLM SEA
+  un bloque markdown intencional (improbable para C4..C8), tendría
+  que parametrizarse. No es problema hoy.
+
+#### C4 usa `httpx` directo en lugar de `anthropic` SDK
+- **Autor:** Andrés Angulo
+- **Contexto:** la Messages API de Anthropic se llama con un POST simple
+  (3 headers + JSON body). Dos opciones: agregar `anthropic` SDK como
+  dependencia o usar `httpx` que ya está en `requirements.txt` (FastAPI
+  + tests).
+- **Decisión:** `httpx` directo.
+- **Razón:** mantener dependencias acotadas. El SDK es ~10 líneas de wrapper
+  para nuestro uso y el cliente que escribimos cubre R5 + manejo de errores
+  + extracción de texto en ~80 líneas, todo testeable con `monkeypatch.setattr(httpx, "post", ...)`.
+- **Trade-off:** si en el futuro queremos features del SDK (streaming,
+  retries con backoff, tool use), evaluamos migrar entonces. Hoy no las
+  necesitamos.
 
 ---
 

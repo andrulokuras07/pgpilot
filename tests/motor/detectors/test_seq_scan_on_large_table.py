@@ -58,7 +58,9 @@ def test_no_dispara_sobre_seq_scan_en_tabla_pequena(
 
     assert detection.found is False
     assert detection.confidence == 0.0
-    assert detection.evidence == {}
+    # Convención de la familia Detection: `matches` siempre existe, vacío
+    # cuando no dispara. Permite iterar sin chequear `found` primero.
+    assert detection.evidence == {"matches": []}
 
 
 # --- caso negativo extra (frontera con C2) -------------------------
@@ -119,4 +121,98 @@ def test_no_falla_si_filter_es_None() -> None:
         },
     }
     detection = detect_seq_scan_on_large_table(plan, snapshot)
+    assert detection.found is False
+
+
+# --- cobertura adicional (D3 del review de C1) ---------------------
+
+
+def test_dos_seq_scans_problematicos_se_reportan_ambos(
+    snapshot_dos_tablas_grandes_con_indice: dict[str, Any],
+) -> None:
+    """Plan sintético con dos Seq Scan, ambos sobre tablas grandes con
+    índice ignorado. La convención `evidence['matches']: list` debe
+    ejercerse en plural (no solo con un único match)."""
+    raw = {
+        "Plan": {
+            "Node Type": "Nested Loop",
+            "Startup Cost": 0.0,
+            "Total Cost": 100.0,
+            "Plan Rows": 1,
+            "Plan Width": 1,
+            "Plans": [
+                {
+                    "Node Type": "Seq Scan",
+                    "Relation Name": "posts",
+                    "Startup Cost": 0.0,
+                    "Total Cost": 50.0,
+                    "Plan Rows": 1,
+                    "Plan Width": 1,
+                    "Filter": "(author_id = 5)",
+                },
+                {
+                    "Node Type": "Seq Scan",
+                    "Relation Name": "comments",
+                    "Startup Cost": 0.0,
+                    "Total Cost": 50.0,
+                    "Plan Rows": 1,
+                    "Plan Width": 1,
+                    "Filter": "(post_id = 7)",
+                },
+            ],
+        }
+    }
+    plan = parse_explain(raw)
+    detection = detect_seq_scan_on_large_table(plan, snapshot_dos_tablas_grandes_con_indice)
+
+    assert detection.found is True
+    matches = detection.evidence["matches"]
+    assert len(matches) == 2
+    tables = {m["table"] for m in matches}
+    assert tables == {"public.posts", "public.comments"}
+
+
+def test_no_dispara_si_indice_no_es_btree(
+    snapshot_posts_con_indice_gin_en_author_id: dict[str, Any],
+) -> None:
+    """Tabla grande con índice GIN sobre la columna del filtro. GIN no
+    acelera comparaciones de igualdad sobre escalares (sirve para tsvector,
+    jsonb, arrays). Por eso `_has_btree_index_on_column` solo cuenta btree;
+    este test ejerce la rama `method != 'btree'`."""
+    raw = {
+        "Plan": {
+            "Node Type": "Seq Scan",
+            "Relation Name": "posts",
+            "Startup Cost": 0.0,
+            "Total Cost": 50.0,
+            "Plan Rows": 1,
+            "Plan Width": 1,
+            "Filter": "(author_id = 5)",
+        }
+    }
+    plan = parse_explain(raw)
+    detection = detect_seq_scan_on_large_table(plan, snapshot_posts_con_indice_gin_en_author_id)
+    assert detection.found is False
+
+
+def test_no_dispara_si_indice_compuesto_y_columna_no_es_la_primera(
+    snapshot_posts_con_indice_compuesto: dict[str, Any],
+) -> None:
+    """Tabla grande con índice btree `(created_at, author_id)`. Filtro
+    sobre `author_id` solo. El planner no acelera con un índice donde la
+    columna del filtro NO es la primera, así que C1 NO debe disparar
+    (no hay índice "utilizable" en sentido del planner)."""
+    raw = {
+        "Plan": {
+            "Node Type": "Seq Scan",
+            "Relation Name": "posts",
+            "Startup Cost": 0.0,
+            "Total Cost": 50.0,
+            "Plan Rows": 1,
+            "Plan Width": 1,
+            "Filter": "(author_id = 5)",
+        }
+    }
+    plan = parse_explain(raw)
+    detection = detect_seq_scan_on_large_table(plan, snapshot_posts_con_indice_compuesto)
     assert detection.found is False

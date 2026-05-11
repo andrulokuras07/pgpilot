@@ -89,6 +89,27 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### C1 — Detector #1: Seq Scan en tabla grande con índice disponible
+- **Autor:** Regina Valenzuela
+- **Archivos:** `motor/detection.py`, `motor/detectors/__init__.py`,
+  `motor/detectors/seq_scan_on_large_table.py`, `motor/__init__.py`,
+  `motor/CLAUDE.md`, `tests/motor/detectors/__init__.py`,
+  `tests/motor/detectors/conftest.py`,
+  `tests/motor/detectors/test_seq_scan_on_large_table.py`
+- **Notas:** Primer detector del producto. Define el contrato
+  `Detection(found, confidence, evidence)` que comparten todos los
+  detectores siguientes (D2..D12). La detección es estructural
+  (R2): `find_nodes(plan, "Seq Scan")` + cruce con `snapshot["sizes"]`
+  y `snapshot["schema"]`; cero regex sobre el SQL crudo. La columna
+  del filtro se infiere del campo `Filter` del nodo (texto
+  estructurado de Postgres, no SQL del usuario). C1 dispara solo
+  cuando el índice **existe** y el planner lo ignora — el caso
+  "falta de índice" se lo deja a C2 para no pisar detectores
+  futuros. Umbral del backlog (100k filas) en constante local
+  `LARGE_TABLE_MIN_ROWS` para evitar acoplar `motor` a `conector`.
+- **Tests:** ✅ 5/5 verde. Suite motor: 47/47. Suite total proyecto:
+  90/90.
+
 #### B15 + B16 — Sandbox Postgres efímero y `explain_in_sandbox`
 - **Autor:** Alexander
 - **Archivos:** `sandbox/__init__.py`, `sandbox/config.py`, `sandbox/pool.py`, `sandbox/setup.py`, `sandbox/explain.py`, `sandbox/CLAUDE.md`, `sandbox/README.md` (eliminado, reemplazado por CLAUDE.md como en el resto de módulos), `tests/sandbox/conftest.py`, `tests/sandbox/test_setup.py`, `tests/sandbox/test_explain.py`, `docker-compose.yml` (sandbox bumpeado a `postgres:18`), `.env.example` (agregadas `SANDBOX_*`).

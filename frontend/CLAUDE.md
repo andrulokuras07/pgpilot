@@ -10,8 +10,8 @@ SPA en React + Vite con un editor Monaco para escribir SQL y un panel donde se m
 
 - ✅ B12 — Vite + React + Monaco con SQL highlight, tema oscuro, botón "Analizar"
 - ✅ B14 — el botón hace `POST /analyze` al backend y muestra el JSON crudo en el panel lateral
-- ⬜ C10 — tarjetas por detección en lugar de JSON crudo
-- ⬜ C11 — comparativo before/after del plan
+- ✅ C10 — tarjetas por detección y recomendación (sustituye al JSON crudo)
+- ✅ C11 — comparativo before/after del plan dentro de la tarjeta de recomendación
 
 ---
 
@@ -36,10 +36,14 @@ frontend/
 ├── index.html            # mount point #root
 ├── .gitignore            # node_modules, dist, .vite
 └── src/
-    ├── main.jsx          # createRoot + StrictMode
-    ├── App.jsx           # editor Monaco + botón Analizar + panel de respuesta
-    ├── index.css         # reset y color-scheme dark
-    └── App.css           # layout y tema VS Code
+    ├── main.jsx              # createRoot + StrictMode
+    ├── App.jsx               # editor Monaco + botón Analizar + panel de tarjetas
+    ├── DetectionCard.jsx     # C10 — tarjeta por entrada de `detections[]`
+    ├── RecommendationCard.jsx# C10 — tarjeta por entrada de `recommendations[]`
+    ├── PlanComparison.jsx    # C11 — comparativo before/after del plan
+    ├── index.css             # reset y color-scheme dark
+    ├── App.css               # layout y tema VS Code
+    └── Card.css              # estilos de tarjetas + comparativo (C10/C11)
 ```
 
 ---
@@ -77,6 +81,34 @@ frontend/
 - `options.automaticLayout = true` — el editor reacciona al resize del contenedor.
 
 ---
+
+## Cómo se mapea el payload del backend a la UI (C10/C11)
+
+El payload de `/analyze` (ver `backend/CLAUDE.md`) se proyecta así:
+
+- `detections[]` → una `DetectionCard` por entrada. Muestra
+  título humanizado, confianza del motor, y la lista de
+  `evidence.matches[]` con tablas/columnas afectadas.
+- `recommendations[]` → una `RecommendationCard` por entrada.
+  Renderea:
+  - **C10:** título, prosa de `explanation.text`, badges (origen
+    LLM/plantilla, `sandbox_verdict`), bloques SQL copiables para
+    `create_index_sql` y `explanation.suggested_rewrite` si existe,
+    y un `<details>` con justificación / impacto / selectividad.
+  - **C11:** componente `PlanComparison` debajo de la prosa.
+    Consume `recommendation.sandbox_plan_comparison`
+    (`{node_type_before, node_type_after, cost_before, cost_after}`)
+    y `recommendation.sandbox_verdict`. Si el comparativo viene
+    `null` (sandbox no disponible, recomendación tipo ANALYZE),
+    se renderea un mensaje neutral en lugar del panel.
+
+**Honestidad de C11:** los costos del sandbox vienen de tablas
+vacías por R6, así que la magnitud absoluta no representa producción.
+La etiqueta de "Xx mejora" se acompaña con "estimado en sandbox
+(costos sobre tablas vacías — la magnitud real depende de stats de
+producción)". El cambio cualitativo (Seq Scan → Index Scan) sí es
+confiable y se resalta visualmente con borde verde en el panel
+"Después".
 
 ## Lo que aún no hay
 

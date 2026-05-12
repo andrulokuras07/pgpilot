@@ -128,6 +128,7 @@ def analyze_query(
                 "selectivity": rec.selectivity,
                 "sandbox_verdict": _verdict_or_none(sandbox_validation),
                 "sandbox_reason": _reason_or_none(sandbox_validation),
+                "sandbox_plan_comparison": _plan_comparison_or_none(sandbox_validation),
                 "explanation": {
                     "text": explanation.explanation,
                     "suggested_rewrite": explanation.suggested_rewrite,
@@ -203,6 +204,26 @@ def _verdict_or_none(v: ValidationResult | None) -> str | None:
 
 def _reason_or_none(v: ValidationResult | None) -> str | None:
     return v.reason if v else None
+
+
+def _plan_comparison_or_none(v: ValidationResult | None) -> dict[str, Any] | None:
+    """Empaqueta el contraste antes/después que el frontend usa para C11.
+
+    `None` cuando no hubo validación de sandbox (pool ausente o explosión
+    atrapada por R5) o cuando la validación no produjo datos comparables
+    (ej. `verdict="skipped_no_sandbox_signal"` sobre una recomendación
+    de ANALYZE — `node_type_before/after` quedan `None`).
+    """
+    if v is None:
+        return None
+    if v.node_type_before is None and v.node_type_after is None:
+        return None
+    return {
+        "node_type_before": v.node_type_before,
+        "node_type_after": v.node_type_after,
+        "cost_before": v.cost_before,
+        "cost_after": v.cost_after,
+    }
 
 
 def _serialize_evidence(evidence: dict[str, Any]) -> dict[str, Any]:

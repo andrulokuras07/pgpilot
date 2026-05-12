@@ -1,6 +1,10 @@
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
+
+import DetectionCard from "./DetectionCard.jsx";
+import RecommendationCard from "./RecommendationCard.jsx";
 import "./App.css";
+import "./Card.css";
 
 const QUERY_INICIAL = `SELECT u.name, count(*)
 FROM users u
@@ -76,23 +80,63 @@ function App() {
         </section>
         <aside className="pane result-pane">
           <div className="pane-header">
-            <span className="pane-label">Respuesta del backend</span>
+            <span className="pane-label">Análisis</span>
           </div>
-          <pre className="result-body">{renderResultado(respuesta, error)}</pre>
+          <div className="result-body">
+            <Resultado
+              respuesta={respuesta}
+              error={error}
+              cargando={cargando}
+            />
+          </div>
         </aside>
       </main>
     </div>
   );
 }
 
-function renderResultado(respuesta, error) {
+function Resultado({ respuesta, error, cargando }) {
   if (error) {
-    return `Error: ${error}\n\n¿Está corriendo el backend en localhost:8000?`;
+    return (
+      <div className="cards-error">
+        Error: {error}
+        {"\n\n"}¿Está corriendo el backend en localhost:8000?
+      </div>
+    );
   }
-  if (respuesta) {
-    return JSON.stringify(respuesta, null, 2);
+  if (cargando) {
+    return (
+      <div className="cards-empty">Analizando la query, un momento…</div>
+    );
   }
-  return "Aún no se ha analizado nada.\nEscribe SQL y haz clic en \"Analizar\".";
+  if (!respuesta) {
+    return (
+      <div className="cards-empty">
+        Aún no se ha analizado nada.
+        {"\n"}Escribe SQL y haz clic en «Analizar».
+      </div>
+    );
+  }
+  const detections = respuesta.detections ?? [];
+  const recommendations = respuesta.recommendations ?? [];
+  if (detections.length === 0 && recommendations.length === 0) {
+    return (
+      <div className="cards-success">
+        Sin anti-patterns detectados. PgPilot revisó el plan y no encontró
+        problemas en los detectores activos.
+      </div>
+    );
+  }
+  return (
+    <div className="cards-list">
+      {detections.map((d, i) => (
+        <DetectionCard key={`det-${i}`} detection={d} />
+      ))}
+      {recommendations.map((r, i) => (
+        <RecommendationCard key={`rec-${i}`} recommendation={r} />
+      ))}
+    </div>
+  );
 }
 
 export default App;

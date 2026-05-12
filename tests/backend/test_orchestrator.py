@@ -215,9 +215,10 @@ def test_analyze_query_con_deteccion_devuelve_estructura_completa(
     assert "justification" in rec
     assert "expected_impact" in rec
 
-    # Sin sandbox_pool → verdict null
+    # Sin sandbox_pool → verdict null y sin comparativo C11
     assert rec["sandbox_verdict"] is None
     assert rec["sandbox_reason"] is None
+    assert rec["sandbox_plan_comparison"] is None
 
     # Explanation (sin LLM → plantilla)
     assert rec["explanation"]["source"] == "template"
@@ -261,6 +262,49 @@ def test_analyze_query_con_sandbox_incluye_verdict(
     assert rec["sandbox_verdict"] == "validated"
     assert "Index Scan" in rec["sandbox_reason"]
 
+    # C11: el comparativo lleva tipos de nodo y costos para que el
+    # frontend pueda renderizar "Seq Scan (cost=12345) → Index Scan (cost=42)".
+    comparison = rec["sandbox_plan_comparison"]
+    assert comparison is not None
+    assert comparison["node_type_before"] == "Seq Scan"
+    assert comparison["node_type_after"] == "Index Scan"
+    assert comparison["cost_before"] == 12345.0
+    assert comparison["cost_after"] == 42.0
+
+
+def test_analyze_query_sandbox_skipped_no_signal_no_emite_comparison(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Cuando el sandbox devuelve `skipped_no_sandbox_signal` (caso ANALYZE
+    sobre tablas vacías), `node_type_before/after` son `None` y no hay
+    comparativo C11 que mostrar — el frontend renderea sin el panel."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    from sandbox import ValidationResult
+
+    def fake_validate(*args: Any, **kwargs: Any) -> ValidationResult:
+        return ValidationResult(
+            verdict="skipped_no_sandbox_signal",
+            reason="recomendación ANALYZE no es validable en sandbox.",
+            node_type_before=None,
+            node_type_after=None,
+            cost_before=None,
+            cost_after=None,
+        )
+
+    monkeypatch.setattr("backend.orchestrator.validate_index_recommendation", fake_validate)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+        sandbox_pool=object(),
+    )
+
+    rec = out["recommendations"][0]
+    assert rec["sandbox_verdict"] == "skipped_no_sandbox_signal"
+    assert rec["sandbox_plan_comparison"] is None
+
 
 def test_analyze_query_sandbox_que_explota_no_rompe_la_pipeline(
     monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
@@ -284,6 +328,7 @@ def test_analyze_query_sandbox_que_explota_no_rompe_la_pipeline(
     assert len(out["recommendations"]) == 1
     assert out["recommendations"][0]["sandbox_verdict"] is None
     assert out["recommendations"][0]["sandbox_reason"] is None
+    assert out["recommendations"][0]["sandbox_plan_comparison"] is None
 
 
 # --- happy path: con LLM (mockeado) -------------------------------

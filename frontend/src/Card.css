@@ -1,0 +1,403 @@
+/* Tarjetas C10 + comparativo C11. Tema VS Code oscuro consistente con
+ * App.css. Sin Tailwind (PROGRESS.md 2026-05-10).
+ */
+
+.cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cards-empty {
+  color: #858585;
+  font-size: 13px;
+  padding: 12px 0;
+  line-height: 1.5;
+}
+
+.cards-success {
+  color: #4ec9b0;
+  font-size: 13px;
+  padding: 12px;
+  background: #2d2d30;
+  border-left: 3px solid #4ec9b0;
+  border-radius: 2px;
+}
+
+.cards-error {
+  color: #f48771;
+  font-size: 13px;
+  padding: 12px;
+  background: #3a2424;
+  border-left: 3px solid #f48771;
+  border-radius: 2px;
+  white-space: pre-wrap;
+}
+
+/* --- Tarjeta base ------------------------------------------------- */
+
+.card {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card-detection {
+  border-left: 3px solid #d7ba7d; /* amarillo VS Code (warning) */
+}
+
+.card-recommendation {
+  border-left: 3px solid #569cd6; /* azul VS Code (info) */
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.card-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.tag-detection {
+  background: #3a3320;
+  color: #d7ba7d;
+}
+
+.tag-recommendation {
+  background: #1f2a3a;
+  color: #569cd6;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+  margin: 0;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.card-confidence {
+  font-size: 11px;
+  color: #858585;
+  white-space: nowrap;
+}
+
+.card-body {
+  font-size: 12.5px;
+  color: #d4d4d4;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.card-explanation {
+  background: #1e1e1e;
+  border-radius: 2px;
+  padding: 10px 12px;
+  border: 1px solid #2d2d30;
+}
+
+.card-subtle {
+  font-size: 11.5px;
+  color: #9a9a9a;
+  line-height: 1.5;
+  margin: 4px 0;
+}
+
+.card-sandbox-reason {
+  border-top: 1px dashed #3c3c3c;
+  padding-top: 8px;
+}
+
+/* --- Lista de matches en detección -------------------------------- */
+
+.match-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.match-item {
+  font-family: "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 11.5px;
+  color: #d4d4d4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.match-item code {
+  background: #1e1e1e;
+  padding: 1px 5px;
+  border-radius: 2px;
+  color: #ce9178;
+}
+
+.match-sep {
+  color: #555;
+}
+
+/* --- Badges ------------------------------------------------------- */
+
+.card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.badge {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.badge-validated {
+  background: #1e3a2a;
+  color: #4ec9b0;
+}
+
+.badge-discarded {
+  background: #3a2424;
+  color: #f48771;
+}
+
+.badge-skipped_no_sandbox_signal {
+  background: #2d2d30;
+  color: #858585;
+}
+
+.badge-neutral {
+  background: #2d2d30;
+  color: #858585;
+}
+
+.badge-llm {
+  background: #2a1f3a;
+  color: #c586c0;
+}
+
+.badge-template {
+  background: #2d2d30;
+  color: #9a9a9a;
+}
+
+/* --- Detalles colapsables ----------------------------------------- */
+
+.card-details {
+  background: #1e1e1e;
+  border-radius: 2px;
+  padding: 8px 10px;
+  border: 1px solid #2d2d30;
+}
+
+.card-details summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: #9cdcfe;
+  padding: 2px 0;
+  user-select: none;
+}
+
+.card-details summary:hover {
+  color: #c4e3f8;
+}
+
+/* --- Bloque SQL --------------------------------------------------- */
+
+.sql-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sql-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sql-code {
+  background: #1e1e1e;
+  border: 1px solid #2d2d30;
+  border-radius: 2px;
+  padding: 8px 10px;
+  font-family: "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 12px;
+  color: #ce9178;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.boton-copiar {
+  background: #2d2d30;
+  color: #d4d4d4;
+  border: 1px solid #3c3c3c;
+  padding: 2px 10px;
+  font-size: 11px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.boton-copiar:hover:not(:disabled) {
+  background: #3a3a3a;
+  border-color: #5a5a5a;
+}
+
+.boton-copiar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Comparativo C11 --------------------------------------------- */
+
+.plan-comparison {
+  background: #1e1e1e;
+  border: 1px solid #2d2d30;
+  border-radius: 2px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-comparison-empty {
+  text-align: center;
+}
+
+.comparison-empty-msg {
+  color: #858585;
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+.comparison-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.comparison-title {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #858585;
+  font-weight: 600;
+}
+
+.verdict-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.verdict-validated {
+  background: #1e3a2a;
+  color: #4ec9b0;
+}
+
+.verdict-discarded {
+  background: #3a2424;
+  color: #f48771;
+}
+
+.verdict-skipped_no_sandbox_signal {
+  background: #2d2d30;
+  color: #858585;
+}
+
+.comparison-panes {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.comparison-pane {
+  flex: 1;
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 2px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.comparison-before {
+  border-left: 2px solid #f48771;
+}
+
+.comparison-after {
+  border-left: 2px solid #858585;
+}
+
+.comparison-after-better {
+  border-left-color: #4ec9b0;
+}
+
+.comparison-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #858585;
+}
+
+.comparison-node {
+  font-family: "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 13px;
+  color: #d4d4d4;
+  font-weight: 600;
+}
+
+.comparison-cost {
+  font-size: 11.5px;
+  color: #9a9a9a;
+}
+
+.comparison-cost strong {
+  color: #d4d4d4;
+  font-family: "Menlo", "Monaco", "Consolas", monospace;
+}
+
+.comparison-arrow {
+  display: flex;
+  align-items: center;
+  color: #858585;
+  font-size: 18px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.comparison-summary {
+  font-size: 11.5px;
+  color: #c4e3f8;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.comparison-summary strong {
+  color: #4ec9b0;
+}

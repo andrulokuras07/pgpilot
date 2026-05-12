@@ -9,6 +9,10 @@ from motor.detectors.nested_loop_large_outer import detect_nested_loop_large_out
 from motor.detectors.or_across_tables import detect_or_across_tables
 from motor.detectors.select_star import detect_select_star
 from motor.detectors.seq_scan_on_large_table import detect_seq_scan_on_large_table
+from motor.detectors.type_mismatch import detect_type_mismatch
+from motor.detectors.unnecessary_cte_materialize import (
+    detect_unnecessary_cte_materialize,
+)
 
 __all__ = [
     "detect_seq_scan_on_large_table",
@@ -19,4 +23,6 @@ __all__ = [
     "detect_nested_loop_large_outer",
     "detect_select_star",
     "detect_missing_covering_index",
+    "detect_type_mismatch",
+    "detect_unnecessary_cte_materialize",
 ]

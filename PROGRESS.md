@@ -93,6 +93,57 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### D11 + D12 — dos detectores estructurales: type mismatch y CTE materializada
+- **Autor:** David Ramírez. Rama `feat/D11-D12-detectores`.
+- **Archivos:**
+  `motor/detectors/type_mismatch.py` (nuevo),
+  `motor/detectors/unnecessary_cte_materialize.py` (nuevo),
+  `motor/detectors/__init__.py`,
+  `motor/__init__.py`,
+  `tests/motor/detectors/test_type_mismatch.py` (nuevo),
+  `tests/motor/detectors/test_unnecessary_cte_materialize.py` (nuevo),
+  `motor/CLAUDE.md` (2 secciones nuevas en API pública + entrada en
+  "Estructura interna"),
+  `docs/patterns/README.md` (filas 12-13 del índice actualizadas a ✅),
+  `docs/patterns/type-mismatch.md` (nuevo),
+  `docs/patterns/unnecessary-cte-materialize.md` (nuevo).
+- **Notas:**
+  - **D11 (`type_mismatch`):** detecta el patrón `((col)::tipo = val)`
+    en el campo `node.filter` de nodos scan — Postgres emite esa
+    notación cuando aplica un cast implícito sobre la columna que
+    impide usar el índice btree existente. El detector solo dispara si
+    existe un índice btree (primera columna = col) en el snapshot; sin
+    índice el Seq Scan es inevitable y el pattern correcto es D16, no
+    D11. Sigue la firma extendida `(plan, snapshot, *, sql=None)`
+    documentada en D9 (reservado para validación futura del tipo
+    declarado en schema). Confianza 0.9. Usa regex
+    `r"\(\((\w+)\)::(\w+)"` sobre `node.filter` (campo emitido por
+    Postgres, no SQL crudo — permitido por R2).
+  - **D12 (`unnecessary_cte_materialize`):** detecta nodos `CTE Scan`
+    cuya `cte_name` aparece exactamente una vez en el plan y el plan no
+    contiene ningún `Recursive Union`. Cuando eso ocurre, la CTE podría
+    inlinearse con `WITH ... AS NOT MATERIALIZED` en Postgres 12+. Si
+    la CTE se referencia más de una vez, la materialización es útil (no
+    reporta). Si hay `Recursive Union` en cualquier lugar del plan, el
+    detector es conservador y no reporta nada (no puede distinguir cuál
+    CTE es la recursiva sin más contexto; evita FPs). Confianza 0.85.
+    Firma estándar `(plan, snapshot)`.
+  - Ambos registrados en `motor/detectors/__init__.py` y reexportados
+    desde `motor/__init__.py`.
+- **Tests:** ✅ 19 nuevos verde (11 D11 + 8 D12). Suite total de
+  detectores: 68/68.
+- **Cumplimiento de reglas:**
+  - R1 (motor decide): funciones puras, sin LLM.
+  - R2 (estructura, no SQL crudo): D11 opera sobre `node.filter`
+    generado por Postgres (no el SQL del usuario); D12 sobre atributos
+    tipados `node.cte_name` y búsqueda de `Recursive Union`.
+  - R9 (pureza): sin I/O, sin estado global.
+  - R10 (tests +/-): ambos tienen happy path + casos negativos +
+    frontera + robustez.
+  - R14 (sin hardcoded): cero literales de AppDB.
+  - R15: esta entrada + `motor/CLAUDE.md` + 2 archivos en
+    `docs/patterns/` actualizados en el mismo PR.
+
 #### D8 + D9 + D10 — tres detectores estructurales adicionales
 - **Autor:** Andrés Angulo. Rama `feat/D8-D9-D10-detectores`.
 - **Archivos:**

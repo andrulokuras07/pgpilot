@@ -14,8 +14,8 @@ Este módulo es la frontera entre el código determinístico del proyecto y el L
 - ✅ C5 — validación de respuesta con Pydantic (`validator.py`)
 - ✅ C6 — validación cruzada de sugerencias (`cross_validator.py`)
 - ✅ C7 — modo "LLM apagado" con plantillas (`templates.py`)
-- ✅ Orquestador C5+C6+C7 (`explain.py` → `explain_recommendation`)
-- ⬜ C8 — logs estructurados
+- ✅ Orquestador C5+C6+C7+C8 (`explain.py` → `explain_recommendation`)
+- ✅ C8 — logs estructurados (`logs.py`)
 
 ---
 
@@ -35,8 +35,11 @@ from ia import (
     CrossValidationResult, cross_validate,
     # C7
     Explanation, explain_from_template,
-    # Orquestador C5+C6+C7
+    # Orquestador C5+C6+C7+C8
     explain_recommendation,
+    # C8 — logs estructurados
+    DEFAULT_LOG_PATH, LLMOutcome,
+    is_logging_enabled, log_llm_interaction, resolve_log_path,
 )
 ```
 
@@ -154,7 +157,7 @@ La confianza baja a 0.6 si la recomendación no tiene selectividad
 (tabla sin ANALYZE); 0.8 cuando sí. La prosa de la plantilla incluye
 los campos `justification` y `expected_impact` ya armados por C2.
 
-### `explain_recommendation(detection, plan, recommendation, sanitized_query, *, snapshot, sandbox_pool=None, max_retries=1) -> Explanation` — orquestador
+### `explain_recommendation(detection, plan, recommendation, sanitized_query, *, snapshot, sandbox_pool=None, max_retries=1, request_id=None) -> Explanation` — orquestador
 
 Función principal que el backend (C9) consume. Atajos:
 
@@ -166,6 +169,71 @@ Función principal que el backend (C9) consume. Atajos:
 Garantía: **nunca propaga** `LLMDisabledError`, `LLMError` ni
 `LLMResponseInvalid` al backend. La pipeline degrada elegante a
 plantilla en todos esos casos (R5).
+
+`request_id` opcional se propaga al log estructurado de C8 para
+correlación con la request HTTP del backend. Si no se pasa, `ia.logs`
+genera un UUID por sí mismo.
+
+**C8 dentro del orquestador:** cada uno de los 5 caminos posibles
+(`llm_ok`, `llm_disabled`, `llm_error`, `llm_invalid_response`,
+`cross_validation_failed`) deja una entrada en el archivo JSONL antes
+de retornar. Esto cumple R3 ("se loggea, no se silencia") sin obligar
+al backend a saber del logger.
+
+### `log_llm_interaction(record: dict[str, Any]) -> Path | None` — C8
+
+Append una entrada al archivo de logs (JSON Lines). Devuelve la ruta
+usada o `None` si:
+
+- el logger está deshabilitado (`PGPILOT_LLM_LOG_DISABLED=true`), o
+- la escritura falló por OSError (disco lleno, permisos, etc.).
+
+Nunca propaga excepciones — el log es side-effect, no debe romper
+pipeline (R5 a nivel logger). Internamente toma un lock global para
+no intercalar líneas en escrituras concurrentes.
+
+**Configuración por entorno:**
+
+- `PGPILOT_LLM_LOG_PATH`: ruta del archivo. Default
+  `logs/llm_interactions.jsonl` (relativo a `cwd`).
+- `PGPILOT_LLM_LOG_DISABLED=true`: apaga el logger.
+
+**Schema de cada línea:**
+
+```jsonc
+{
+  "timestamp": "2026-05-11T20:34:12.345+00:00",
+  "request_id": "uuid hex",
+  "outcome": "llm_ok | llm_disabled | llm_error | llm_invalid_response | cross_validation_failed",
+  "detection": {"found": true, "confidence": 1.0, "matches_count": 1, "first_match_table": "...", "first_match_column": "..."},
+  "recommendation": {"kind": "create_index|analyze", "table": "...", "column": "...", "index_name": "...", "selectivity": 0.002},
+  "sanitized_sql": "SELECT ... WHERE x = $LITERAL_2_1",
+  "placeholders_count": 1,
+  "llm": {
+    "called": true,
+    "raw_response_excerpt": "primeros 4000 chars",
+    "raw_response_length": 1234,
+    "pydantic_passed": true,
+    "cross_validation_passed": true,
+    "cross_reasons": [],
+    "sandbox_verdict": "validated | discarded | skipped_no_sandbox_signal | null",
+    "error": null
+  },
+  "final_shown": {"source": "llm|template", "confidence": 0.93, "has_suggested_rewrite": false, "explanation_excerpt": "primeros 200 chars"}
+}
+```
+
+**Helpers expuestos** (útiles para tests y para callers que quieran
+loggear sus propios eventos con la misma forma):
+
+- `is_logging_enabled() -> bool` — refleja el estado actual del entorno.
+- `resolve_log_path() -> Path` — ruta efectiva.
+- `LLMOutcome` — `Literal` con los 5 outcomes válidos.
+- `DEFAULT_LOG_PATH = "logs/llm_interactions.jsonl"`.
+
+`logs/` está en `.gitignore` (junto con `*.jsonl`); cada dev acumula
+sus propias interacciones. En producción el operador puede rotar el
+archivo (logrotate, cron) — el logger solo hace append.
 
 ### `sanitize(sql: str) -> SanitizedQuery`
 
@@ -236,3 +304,13 @@ ANTHROPIC_API_KEY=sk-... pytest tests/ia -m llm
   El "hecho cuando" más fuerte del backlog: con `LLM_ENABLED=false`
   o con respuesta malformada del LLM, el sistema devuelve
   `Explanation(source="template")` sin propagar excepciones.
+- `tests/ia/test_logs.py` — C8. Helpers puros, persistencia,
+  toggle por env, resiliencia ante OSError, y un test de integración
+  con `explain_recommendation` por cada outcome (5 caminos). El
+  "hecho cuando" del backlog C8 ("después de un análisis, existe un
+  log JSON con todos los campos") está cubierto en
+  `test_explain_recommendation_loggea_outcome_llm_ok_con_todos_los_campos`.
+
+`tests/ia/conftest.py` aplica `PGPILOT_LLM_LOG_PATH=tmp_path/llm_log.jsonl`
+como fixture autouse, así que ningún test escribe en `logs/` del repo
+y los tests de C8 leen ese path con la fixture nombrada `llm_log_path`.

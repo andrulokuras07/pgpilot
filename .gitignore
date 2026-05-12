@@ -47,3 +47,7 @@ yarn-error.log*
 
 # Cache local de metadata (B5). Cada dev regenera con su propia BD.
 cache/
+
+# Logs estructurados de interacciones LLM (C8). Por dev, no se versionan.
+logs/
+*.jsonl

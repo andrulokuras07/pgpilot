@@ -8,6 +8,13 @@ API pública del módulo:
 from ia.cross_validator import CrossValidationResult, cross_validate
 from ia.explain import explain_recommendation
 from ia.llm import LLMDisabledError, LLMError, call_llm
+from ia.logs import (
+    DEFAULT_LOG_PATH,
+    LLMOutcome,
+    is_logging_enabled,
+    log_llm_interaction,
+    resolve_log_path,
+)
 from ia.prompt import LLMPrompt, build_explanation_prompt
 from ia.sanitizer import SanitizedQuery, restore, sanitize
 from ia.templates import Explanation, explain_from_template
@@ -40,6 +47,12 @@ __all__ = [
     # C7 — plantillas
     "Explanation",
     "explain_from_template",
-    # Orquestador C5+C6+C7
+    # Orquestador C5+C6+C7+C8
     "explain_recommendation",
+    # C8 — logs estructurados
+    "DEFAULT_LOG_PATH",
+    "LLMOutcome",
+    "is_logging_enabled",
+    "log_llm_interaction",
+    "resolve_log_path",
 ]

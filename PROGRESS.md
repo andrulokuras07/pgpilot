@@ -21,12 +21,26 @@ Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` par
 ## Estado actual del proyecto
 
 ### Cobertura de detección
-- **AppDB v1:** 0 / 20 queries detectadas (C1 contra AppDB real;
-  medido 2026-05-11 con `scripts/measure_c1_coverage.py`). C1 sólo
-  ataca "índice presente pero planner Seq Scan", caso que no
-  ocurre naturalmente en AppDB v1. Faltan detectores hermanos.
-- **Falsos positivos:** 0 medidos (C1 no disparó nada; el detector
-  es conservador por diseño).
+- **AppDB v1:** **15 / 20** queries detectadas (medido 2026-05-12
+  post-merge de D16-D18 sobre D8-D12, con `scripts/measure_coverage.py`
+  corriendo los 13 detectores activos: C1+D4+D5+D6+D7+D8+D9+D10+D11+
+  D12+D16+D17+D18). Trayectoria del día: **0/20** (sólo C1) →
+  **3/20** (C1+D4-D7) → **11/20** (sumando D16-D18) → **15/20**
+  (uniendo con D8-D12 del compañero en el merge).
+- **Disparos por detector:** D16=7 (Q01, Q02, Q06, Q08, Q09, Q15,
+  Q16), **D9=4 (Q01, Q07, Q12, Q18)** — segundo con más cobertura,
+  D4/D5/D7/D12/D17/D18=1 c/u, D6/D8/D10/D11/C1=0.
+- **Queries aún huérfanas:** Q05 (sort spill), Q10 (stats obsoletas
+  en tags chica), Q17 (IN→EXISTS), Q19 (NOT IN — timeout en
+  ANALYZE), Q20 (count(*)). **Falta 1 sola query** para llegar al
+  objetivo rúbrica ≥16/20. D22 (count(*) → Q20) es el siguiente
+  paso natural.
+- **Falsos positivos:** triage abierto. Q02/Q15/Q16 son "TP extras"
+  (D16 captura el síntoma del índice faltante incluso cuando el
+  anti-pattern raíz es OR cross-column, recheck con alta filter
+  ratio o HAVING→WHERE — la recomendación CREATE INDEX sigue siendo
+  útil pero no resuelve el patrón principal). D13 (recomendador con
+  selectividad) los filtrará cuando aplique.
 - **AppDB v2:** sin probar (objetivo: ≥4 de 5 queries nuevas)
 
 ### Hitos
@@ -92,6 +106,85 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ## 2026-05-12
 
 ### Avances
+
+#### D16 + D17 + D18 — tres detectores y salto de cobertura 3/20 → 11/20
+- **Autor:** Regina Valenzuela. Rama
+  `feat/D16-D17-D18-detectores`.
+- **Archivos:** `motor/detectors/_common.py` (nuevo — helpers
+  compartidos C1/D16), `motor/detectors/missing_index.py` (nuevo, D16),
+  `motor/detectors/partial_index_opportunity.py` (nuevo, D17),
+  `motor/detectors/cardinality_misestimate.py` (nuevo, D18),
+  `motor/detectors/seq_scan_on_large_table.py` (refactor a `_common`,
+  sin cambio de comportamiento), `motor/detectors/__init__.py`
+  (registra los tres), `motor/__init__.py` (re-exporta),
+  `motor/CLAUDE.md` (tres secciones nuevas en "API pública",
+  estructura interna actualizada con `_common.py`, "Cómo extender"
+  con la convención del helper compartido),
+  `tests/motor/detectors/test_missing_index.py` (nuevo, 8 tests),
+  `tests/motor/detectors/test_partial_index_opportunity.py` (nuevo,
+  6 tests), `tests/motor/detectors/test_cardinality_misestimate.py`
+  (nuevo, 5 tests),
+  `docs/patterns/missing-index.md` (nuevo),
+  `docs/patterns/partial-index-opportunity.md` (nuevo),
+  `docs/patterns/cardinality-misestimate.md` (nuevo),
+  `docs/patterns/README.md` (tres filas flipped a ✅ Implementado),
+  `scripts/measure_coverage.py` (nuevo — hermano de
+  `measure_c1_coverage.py`, corre todos los detectores registrados
+  y reporta cobertura agregada; usado como verificación empírica
+  de este bloque), `PROGRESS.md` (esta entrada + cobertura global
+  actualizada).
+- **Notas:** los tres detectores comparten contrato con la familia
+  C1/D4-D7: función pura `detect_X(plan, snapshot) -> Detection`,
+  `evidence={"matches": [...]}`. Refactor de C1 acompaña el bloque
+  porque D16 reutiliza ~80% del razonamiento de C1 (Seq Scan + tabla
+  grande + columna del filtro inferible); los helpers
+  (`column_from_filter`, `has_btree_index_on_column`,
+  `resolve_table_key`, `LARGE_TABLE_MIN_ROWS`) se movieron a
+  `motor/detectors/_common.py`. Comportamiento de C1 idéntico,
+  validado con los 8 tests existentes de C1 que siguen verde.
+  - **D16 (`missing_index`):** caso simétrico de C1 (índice falta
+    en lugar de existir e ignorarse). Recomienda `CREATE INDEX`.
+    Cobertura medida: Q01, Q02, Q06, Q08, Q09, Q15, Q16 (7
+    queries). Confianza 0.95.
+  - **D17 (`partial_index_opportunity`):** scans con filtro AND
+    donde una columna es booleana. Reconoce las tres formas que
+    Postgres emite: `NOT col`, `col = true|false`, `col IS
+    TRUE|FALSE`. Recomienda `CREATE INDEX … WHERE bool_col = valor`.
+    Cobertura: Q11 (1 query). Confianza 0.8. **No mira
+    `most_common_freqs`** (sería extender B4) — la decisión final
+    se delega al recomendador con stats reales y al sandbox.
+  - **D18 (`cardinality_misestimate`):** joins (`Hash Join`,
+    `Merge Join`, `Nested Loop`) con razón `plan_rows`/`actual_rows`
+    ≥5× y scan descendiente con `Filter` AND multi-columna de la
+    misma tabla. Recomienda `CREATE STATISTICS` multi-columna.
+    Cobertura: Q13 (1 query, plan_rows=1948 vs actual_rows=0 en el
+    Hash Join). Confianza 0.85.
+- **Medición empírica con `scripts/measure_coverage.py` (corrida
+  inmediatamente antes del commit):**
+  - 11/20 queries cubiertas (vs 3/20 antes). Objetivo rúbrica ≥16.
+  - Disparos por detector: C1=0, D4=1 (Q03), D5=1 (Q04), D6=0,
+    D7=1 (Q09), **D16=7 (Q01, Q02, Q06, Q08, Q09, Q15, Q16)**,
+    D17=1 (Q11), D18=1 (Q13).
+  - Queries aún huérfanas: Q05 (sort spill), Q07 (created_at ya
+    Bitmap), Q10 (stats tags), Q12 (cast), Q14 (CTE), Q17 (IN), Q18
+    (ORDER BY+LIMIT), Q19 (timeout NOT IN), Q20 (count(*)).
+  - **Triage de los 3 disparos de D16 sobre Q02/Q15/Q16:** son TP
+    estructurales pero no resuelven el anti-pattern raíz (Q02 es
+    OR cross-column, Q15 es recheck con alta filter ratio, Q16 es
+    HAVING→WHERE). La recomendación CREATE INDEX sigue siendo
+    correcta y útil; cuando aterricen D6/D2/D19 hermanos, ambos
+    detectores pueden disparar y la prosa del LLM elegirá la
+    explicación más adecuada (sin cambiar la lista de matches del
+    motor — el motor decide y emite todos los hechos).
+- **Tests:** ✅ Suite completa **289 passed + 1 skipped** (vs 270
+  antes). Los 19 tests nuevos cubren happy path, frontera con
+  detectores hermanos, robustez (tabla desconocida, filter
+  ausente, sin Actual Rows, ratio bajo) y casos negativos.
+- **Próximo bloque crítico:** D22 (count(*) sin WHERE → Q20),
+  D20 (IN→EXISTS → Q17), D2 (stats obsoletas → Q10), D3 (sort
+  spill → Q05). Cuatro detectores baratos llevarían a 15/20.
+  Para llegar a 16/20 hace falta uno más entre D11 (cast),
+  D10 (índice cubriente Q18) y D12 (CTE Q14).
 
 #### D11 + D12 — dos detectores estructurales: type mismatch y CTE materializada
 - **Autor:** David Ramírez. Rama `feat/D11-D12-detectores`.
@@ -215,6 +308,83 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
     `docs/patterns/` actualizados en el mismo PR.
 
 ### Decisiones
+
+#### Refactor `_common.py` antes de aterrizar D16
+- **Autor:** Regina Valenzuela
+- **Contexto:** D16 es estructuralmente el mismo detector que C1
+  con el predicado de índice invertido. El backlog explícito dice
+  "reuso ~80% del código de C1". Las opciones eran (a) importar
+  los privados `_column_from_filter`, `_has_btree_index_on_column`
+  y `_resolve_table_key` desde `seq_scan_on_large_table.py`,
+  (b) duplicar los helpers en `missing_index.py`, (c) extraerlos a
+  un módulo compartido `_common.py`.
+- **Decisión:** (c). Helpers en `motor/detectors/_common.py` con
+  nombres sin guión bajo, importados por ambos detectores.
+- **Razón:** importar privados de otro módulo es code smell que
+  ensucia el rastreo (¿es API? ¿es interno?). Duplicar invita a
+  drift cuando uno se modifique. Un `_common.py` con nombres
+  públicos dentro del paquete `detectors` declara el contrato
+  compartido: si mañana D11 (cast) o cualquier otro detector
+  necesita resolver una tabla del snapshot, ya hay un sitio
+  obvio donde meterlo.
+- **Trade-off:** un commit que aterriza D16 también toca el
+  archivo de C1. Mitigado con los 8 tests existentes de C1, que
+  pasaron sin cambios. El refactor es invariante por
+  construcción.
+
+#### Heurística estructural en D17 sin extender B4
+- **Autor:** Regina Valenzuela
+- **Contexto:** el backlog de D17 dice "extender B4 si hace falta
+  capturar `most_common_freqs`" para decidir si la columna
+  booleana del filtro está concentrada (>95% en un valor) y por
+  tanto el índice parcial gana selectividad. Extender B4 implica
+  tocar `/conector` (`stats.py`, `types.py`,
+  `conector/CLAUDE.md`, tests), invalidar caches existentes y
+  alargar este PR considerablemente.
+- **Alternativas:** (a) extender B4 ahora y disparar D17 solo
+  cuando la frecuencia del bool en MCF supere un umbral,
+  (b) disparar D17 estructuralmente y dejar que el recomendador
+  (D13) y el sandbox descarten los matches sin ganancia real.
+- **Decisión:** (b). D17 dispara con confianza 0.8 cuando hay un
+  predicado bool junto a otra columna; el sandbox compara
+  costos antes/después y la sugerencia se descarta si no mejora.
+- **Razón:** el sandbox ya valida (R3) — el filtrado por
+  selectividad ya tiene un sitio donde vivir. D17 emite el
+  candidato; el resto del pipeline decide. Este PR queda enfocado
+  en `/motor` sin abrir alcance a `/conector`.
+- **Trade-off:** sin MCF, D17 puede emitir matches que el sandbox
+  descartará — costo de validación extra en runtime. Aceptable
+  para Demo Day; extender B4 queda como ticket futuro vinculado a
+  D13.
+
+#### D16 dispara sobre Q02/Q15/Q16 — clasificación como TP
+- **Autor:** Regina Valenzuela
+- **Contexto:** la medición empírica muestra D16 disparando sobre
+  queries cuyo anti-pattern raíz NO es "índice faltante" sino OR
+  cross-column (Q02), recheck con alta filter ratio (Q15) y
+  HAVING-que-debería-ser-WHERE (Q16). El regex de C1 (heredado
+  vía `_common.py`) captura la primera columna del filtro y
+  cuando esa columna efectivamente no tiene índice, D16 dispara.
+- **Alternativas:** (a) refinar D16 para abstenerse cuando otro
+  detector también aplica al mismo plan, (b) aceptar el solapamiento
+  y dejar que la capa de prosa (LLM/template) elija la explicación
+  más relevante.
+- **Decisión:** (b). Los tres son TP estructurales: en todos los
+  casos la columna del filtro NO está indexada y `CREATE INDEX`
+  efectivamente ayudaría aunque no resuelva el síntoma principal.
+- **Razón:** la regla #1 del proyecto dice "el motor decide y
+  emite los hechos; el LLM explica". Ocultar un hecho real para
+  no solapar con otro detector contradice la regla — el motor
+  debe reportar todo lo que es estructuralmente cierto y dejar la
+  priorización a la capa siguiente. Para Demo Day, el solapamiento
+  juega a favor: misma query, dos recomendaciones complementarias.
+- **Trade-off:** la métrica de "queries cubiertas" puede inflarse
+  si todo cae bajo D16. Mitigación: la cobertura por detector se
+  reporta separada en `scripts/measure_coverage.py`, no solo el
+  agregado. Si D16 termina cubriendo accidentalmente lo que D6,
+  D2 o D19 deberían cubrir, esos detectores siguen siendo
+  necesarios para emitir la prosa correcta y mejorar la rúbrica
+  cualitativa (Criterio 2.2).
 
 #### Firma extendida para D9: `(plan, snapshot, *, sql=None)`
 - **Autor:** Andrés Angulo

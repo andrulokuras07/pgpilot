@@ -20,10 +20,7 @@ from motor.nodes import find_nodes
 from motor.parser import ExplainResult, PlanNode
 
 _LIKE_LEADING_WILDCARD_RE = re.compile(
-    r"\(?\(?(\w+)\)?"
-    r"(?:::(?:character varying|text))?"
-    r"\s+~~\s+"
-    r"'%"
+    r"\(?\(?(\w+)\)?" r"(?:::(?:character varying|text))?" r"\s+~~\s+" r"'%"
 )
 
 _SCAN_TYPES = ("Seq Scan", "Bitmap Heap Scan", "Bitmap Index Scan")

@@ -7,12 +7,15 @@ desde aquí.
 
 from motor.detection import Detection
 from motor.detectors import (
+    detect_cardinality_misestimate,
     detect_correlated_subquery,
     detect_function_in_where,
     detect_like_leading_wildcard,
     detect_missing_covering_index,
+    detect_missing_index,
     detect_nested_loop_large_outer,
     detect_or_across_tables,
+    detect_partial_index_opportunity,
     detect_select_star,
     detect_seq_scan_on_large_table,
     detect_type_mismatch,
@@ -39,6 +42,9 @@ __all__ = [
     "detect_missing_covering_index",
     "detect_type_mismatch",
     "detect_unnecessary_cte_materialize",
+    "detect_missing_index",
+    "detect_partial_index_opportunity",
+    "detect_cardinality_misestimate",
     "Recommendation",
     "recommend_for_seq_scan_on_large_table",
 ]

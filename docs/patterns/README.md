@@ -14,7 +14,7 @@ archivo `.md`. Este `README.md` es el índice + la plantilla.
 | # | Anti-pattern | Archivo | Detector | Estado |
 |---|--------------|---------|----------|--------|
 | 1 | Seq Scan sobre tabla grande con índice disponible | [`seq-scan-on-large-table.md`](seq-scan-on-large-table.md) | `motor.detect_seq_scan_on_large_table` (C1) | ✅ Implementado |
-| 2 | Seq Scan sobre tabla grande sin índice en la columna del filtro | _(pendiente)_ | D16 | ⬜ Backlog |
+| 2 | Seq Scan sobre tabla grande sin índice en la columna del filtro | [`missing-index.md`](missing-index.md) | `motor.detect_missing_index` (D16) | ✅ Implementado |
 | 3 | Mismatch entre `rows estimated` y `rows actual` (stats obsoletas) | _(pendiente)_ | D2 | ⬜ Backlog |
 | 4 | Sort en disco (`external merge Disk`) | _(pendiente)_ | D3 | ⬜ Backlog |
 | 5 | LIKE con wildcard al inicio | [`like-leading-wildcard.md`](like-leading-wildcard.md) | `motor.detect_like_leading_wildcard` (D4) | ✅ Implementado |
@@ -26,8 +26,8 @@ archivo `.md`. Este `README.md` es el índice + la plantilla.
 | 11 | Falta de índice cubriente | [`missing-covering-index.md`](missing-covering-index.md) | `motor.detect_missing_covering_index` (D10) | ✅ Implementado |
 | 12 | Índice no usado por mismatch de tipo | [`type-mismatch.md`](type-mismatch.md) | `motor.detect_type_mismatch` (D11) | ✅ Implementado |
 | 13 | CTE materializada innecesariamente | [`unnecessary-cte-materialize.md`](unnecessary-cte-materialize.md) | `motor.detect_unnecessary_cte_materialize` (D12) | ✅ Implementado |
-| 14 | Oportunidad de índice parcial | _(pendiente)_ | D17 | ⬜ Backlog |
-| 15 | Error de cardinalidad en JOIN multi-condición | _(pendiente)_ | D18 | ⬜ Backlog |
+| 14 | Oportunidad de índice parcial | [`partial-index-opportunity.md`](partial-index-opportunity.md) | `motor.detect_partial_index_opportunity` (D17) | ✅ Implementado |
+| 15 | Error de cardinalidad en JOIN multi-condición | [`cardinality-misestimate.md`](cardinality-misestimate.md) | `motor.detect_cardinality_misestimate` (D18) | ✅ Implementado |
 | 16 | HAVING que debería ser WHERE | _(pendiente)_ | D19 | ⬜ Backlog |
 | 17 | IN con subquery debería ser EXISTS | _(pendiente)_ | D20 | ⬜ Backlog |
 | 18 | NOT IN con subquery potencialmente NULL | _(pendiente)_ | D21 | ⬜ Backlog |

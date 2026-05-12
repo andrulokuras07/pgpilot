@@ -17,10 +17,10 @@ archivo `.md`. Este `README.md` es el índice + la plantilla.
 | 2 | Seq Scan sobre tabla grande sin índice en la columna del filtro | _(pendiente)_ | D16 | ⬜ Backlog |
 | 3 | Mismatch entre `rows estimated` y `rows actual` (stats obsoletas) | _(pendiente)_ | D2 | ⬜ Backlog |
 | 4 | Sort en disco (`external merge Disk`) | _(pendiente)_ | D3 | ⬜ Backlog |
-| 5 | LIKE con wildcard al inicio | _(pendiente)_ | D4 | ⬜ Backlog |
-| 6 | Función no-immutable en WHERE | _(pendiente)_ | D5 | ⬜ Backlog |
-| 7 | OR sobre columnas de tablas distintas | _(pendiente)_ | D6 | ⬜ Backlog |
-| 8 | Subquery correlacionada | _(pendiente)_ | D7 | ⬜ Backlog |
+| 5 | LIKE con wildcard al inicio | [`like-leading-wildcard.md`](like-leading-wildcard.md) | `motor.detect_like_leading_wildcard` (D4) | ✅ Implementado |
+| 6 | Función no-immutable en WHERE | [`function-in-where.md`](function-in-where.md) | `motor.detect_function_in_where` (D5) | ✅ Implementado |
+| 7 | OR sobre columnas de tablas distintas | [`or-across-tables.md`](or-across-tables.md) | `motor.detect_or_across_tables` (D6) | ✅ Implementado |
+| 8 | Subquery correlacionada | [`correlated-subquery.md`](correlated-subquery.md) | `motor.detect_correlated_subquery` (D7) | ✅ Implementado |
 | 9 | Nested Loop con tabla externa grande | _(pendiente)_ | D8 | ⬜ Backlog |
 | 10 | `SELECT *` con pocas columnas usadas | _(pendiente)_ | D9 | ⬜ Backlog |
 | 11 | Falta de índice cubriente | _(pendiente)_ | D10 | ⬜ Backlog |

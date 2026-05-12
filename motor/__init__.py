@@ -23,7 +23,17 @@ from motor.detectors import (
 )
 from motor.nodes import KNOWN_NODE_TYPES, find_nodes
 from motor.parser import ExplainResult, PlanNode, parse_explain
-from motor.recommender import Recommendation, recommend_for_seq_scan_on_large_table
+from motor.recommender import (
+    MIN_SELECTIVITY_FOR_INDEX,
+    Recommendation,
+    compute_selectivity,
+    order_columns_by_selectivity,
+    recommend,
+    recommend_for_cardinality_misestimate,
+    recommend_for_missing_index,
+    recommend_for_partial_index_opportunity,
+    recommend_for_seq_scan_on_large_table,
+)
 
 __all__ = [
     "ExplainResult",
@@ -46,5 +56,12 @@ __all__ = [
     "detect_partial_index_opportunity",
     "detect_cardinality_misestimate",
     "Recommendation",
+    "recommend",
     "recommend_for_seq_scan_on_large_table",
+    "recommend_for_missing_index",
+    "recommend_for_partial_index_opportunity",
+    "recommend_for_cardinality_misestimate",
+    "compute_selectivity",
+    "order_columns_by_selectivity",
+    "MIN_SELECTIVITY_FOR_INDEX",
 ]

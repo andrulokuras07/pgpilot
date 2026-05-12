@@ -412,41 +412,101 @@ match incluye `cte_name`, `reference_count`, `node_type`,
   referencia porque estima que el costo de recalcular la CTE en el
   contexto del plan es mayor. El sandbox confirma antes de mostrar.
 
-### `Recommendation` (frozen dataclass) — C2
+### `Recommendation` (frozen dataclass) — C2 + D13
 Salida del recomendador. Campos:
-- `kind: Literal["create_index", "analyze"]` — la acción sugerida.
-  `"analyze"` aparece cuando ya existe un índice equivalente: el
-  problema probablemente es stats desactualizadas, no índice faltante.
+- `kind: Literal["create_index", "analyze", "create_partial_index",
+  "create_statistics", "skipped_low_selectivity"]` — la acción
+  sugerida. `"analyze"` aparece cuando ya existe un índice
+  equivalente (problema probable: stats desactualizadas).
+  `"create_partial_index"` y `"create_statistics"` se introdujeron en
+  D13 para D17 y D18 respectivamente. `"skipped_low_selectivity"` es
+  el marcador D13 cuando un `create_index` se descarta por baja
+  selectividad — el SQL está vacío y la justificación explica por qué.
 - `table: str` — clave `"<schema>.<tabla>"` del snapshot.
-- `column: str` — columna recomendada.
-- `index_method: str` — siempre `"btree"` en v1 (selectividad simple).
-- `index_name: str` — nombre sugerido para el índice nuevo
-  (`idx_<tabla>_<columna>`). En el caso `analyze` apunta al nombre del
-  índice existente para que la prosa lo pueda referenciar.
+- `column: str` — columna principal (para `create_statistics` apunta
+  a la más selectiva).
+- `index_method: str` — `"btree"` para v1; `"extended_statistics"` en
+  el caso de `create_statistics`.
+- `index_name: str` — nombre sugerido para el índice/stats nuevo
+  (`idx_<tabla>_<columna>`, `stats_<tabla>_<cols>`). En `analyze`
+  apunta al índice existente.
 - `create_index_sql: str` — SQL final listo para mostrar al usuario.
-  En `kind="analyze"` es `ANALYZE <schema>.<tabla>;` (no CREATE INDEX).
+  Para `analyze` es `ANALYZE <schema>.<tabla>;`; para
+  `create_statistics` es `CREATE STATISTICS …`; vacío en
+  `skipped_low_selectivity`.
 - `justification: str` — explicación textual derivada de
   `n_distinct`/`null_frac`/tamaño.
 - `expected_impact: str` — prosa corta con el impacto esperado.
 - `selectivity: float | None` — selectividad estimada del filtro (0..1).
-  `None` si la tabla nunca tuvo `ANALYZE`.
+  `None` si la tabla nunca tuvo `ANALYZE` o el kind no aplica
+  (`create_statistics`).
+- `partial_predicate: str | None` — cláusula `WHERE` del índice
+  parcial (`"<col> = <valor>"`). Solo en `create_partial_index`.
+- `statistics_columns: tuple[str, ...] | None` — columnas listadas en
+  `CREATE STATISTICS`, ordenadas por selectividad descendente. Solo
+  en `create_statistics`.
 
-### `recommend_for_seq_scan_on_large_table(detection, snapshot) -> list[Recommendation]`
-Recomendador C2. Recibe una `Detection` de C1 y produce una lista de
-`Recommendation`, una por entrada en `evidence["matches"]`. Si
-`detection.found is False`, devuelve `[]`. Cada match se traduce a:
+### `MIN_SELECTIVITY_FOR_INDEX: float = 0.2`
+Umbral D13 para descartar `create_index`. Si el filtro pasa más del
+20% de las filas, un btree no aporta (Postgres prefiere Seq Scan).
+Override por test usando el keyword-only `min_selectivity` de los
+recomendadores que lo aceptan.
 
-- Si ya existe un índice btree sobre `(column, ...)` (cualquier
-  método btree donde la primera columna sea la del filtro): emite
-  `kind="analyze"` con SQL `ANALYZE <tabla>;` y justificación
-  apuntando a stats desactualizadas.
-- Si NO existe ese índice: emite `kind="create_index"` con SQL
-  `CREATE INDEX <name> ON <tabla> (<columna>);`.
+### `recommend_for_seq_scan_on_large_table(detection, snapshot, *, min_selectivity=MIN_SELECTIVITY_FOR_INDEX) -> list[Recommendation]`
+Recomendador C2 ampliado con D13. Recibe una `Detection` de C1 y
+produce una `Recommendation` por entrada en `evidence["matches"]`.
 
-La selectividad se calcula a partir de `snapshot["stats"][table][col]`:
-`n_distinct > 0` → `1 / n_distinct`; `n_distinct < 0` → `-n_distinct`
-(convención Postgres: negativo = ratio). Si no hay stats, queda en
-`None` y la justificación lo declara explícito.
+- Si ya existe un índice btree apuntable, emite `kind="analyze"`.
+  Nunca se filtra por selectividad (es barato y útil).
+- Si NO existe ese índice y la selectividad estimada > `min_selectivity`,
+  emite `kind="skipped_low_selectivity"` (marker para logs; no se
+  muestra en UI principal).
+- En el resto de los casos, emite `kind="create_index"`.
+
+La selectividad se calcula a partir de `snapshot["stats"][table][col]`
+con la convención Postgres (n_distinct positivo = absoluto;
+negativo = ratio). Si no hay stats, queda en `None` y NO se descarta
+(la decisión la toma el sandbox C3).
+
+### `recommend_for_missing_index(detection, snapshot, *, min_selectivity=MIN_SELECTIVITY_FOR_INDEX) -> list[Recommendation]`
+Recomendador para D16. Lee `suggested_sql` y `suggested_index_name`
+del evidence del detector, enriquece con stats y aplica el mismo
+filtro de selectividad que C1. Cuando la selectividad supera el
+umbral, sustituye por `skipped_low_selectivity` con razón.
+
+### `recommend_for_partial_index_opportunity(detection, snapshot) -> list[Recommendation]`
+Recomendador para D17. Construye `Recommendation` con
+`kind="create_partial_index"` y `partial_predicate="<bool_col> =
+<valor>"`. **NO se aplica el filtro D13:** la selectividad efectiva
+del índice parcial depende del valor del bool (D17 no consulta
+`most_common_freqs`); la decisión real la toma el sandbox C3 al
+medir el costo con/sin el índice.
+
+### `recommend_for_cardinality_misestimate(detection, snapshot) -> list[Recommendation]`
+Recomendador para D18. Construye `Recommendation` con
+`kind="create_statistics"`. Las columnas se ordenan por selectividad
+descendente vía `order_columns_by_selectivity`. **NO se aplica el
+filtro D13:** una estadística extendida no tiene costo de espacio
+comparable a un índice, así que vale la pena emitirla siempre.
+
+### `recommend(detections: dict[str, Detection], snapshot, *, min_selectivity=MIN_SELECTIVITY_FOR_INDEX) -> list[Recommendation]`
+Orquestador D13. Recibe un mapa `código_detector → Detection` (mismo
+shape que `scripts/measure_coverage.py.DETECTORS`) y combina las
+recomendaciones de **C1, D16, D17, D18** en una lista plana, en orden
+ascendente por código de detector para determinismo. Detectores sin
+recomendador asociado (D4-D12) se ignoran silenciosamente — su salida
+la consume el LLM/template como prosa explicativa.
+
+### `compute_selectivity(column_stats, estimated_rows) -> float | None`
+Selectividad estimada del filtro de igualdad sobre la columna.
+Pública (D13) para que otros módulos (sandbox, backend) puedan
+reproducir el cálculo. Devuelve `None` cuando no hay stats.
+
+### `order_columns_by_selectivity(snapshot, table, columns) -> list[str]`
+Ordena `columns` por selectividad ascendente (más selectiva primero).
+Útil para índices compuestos y para presentar columnas en `CREATE
+STATISTICS`. Sin stats → la columna queda al final preservando orden
+original.
 
 **Comunes a todo nodo:**
 - `node_type: str` — tal cual viene de Postgres (`"Seq Scan"`,
@@ -557,7 +617,7 @@ motor/
 │   ├── missing_index.py                 # D16
 │   ├── partial_index_opportunity.py     # D17
 │   └── cardinality_misestimate.py       # D18
-├── recommender.py  # Recommendation + recommenders por detector (C2)
+├── recommender.py  # Recommendation + recommenders por detector (C2 + D13)
 └── CLAUDE.md       # este archivo
 ```
 

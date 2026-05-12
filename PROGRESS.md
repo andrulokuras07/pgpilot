@@ -93,6 +93,135 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### C8 + C9 — logs estructurados de LLM y endpoint /analyze conectado al motor real
+- **Autor:** Alexander
+- **Archivos:** `ia/logs.py` (nuevo), `ia/explain.py`, `ia/__init__.py`,
+  `ia/CLAUDE.md`, `backend/orchestrator.py` (nuevo), `backend/main.py`,
+  `backend/CLAUDE.md`, `tests/ia/conftest.py`, `tests/ia/test_logs.py`
+  (nuevo), `tests/backend/conftest.py`, `tests/backend/test_analyze.py`,
+  `tests/backend/test_orchestrator.py` (nuevo), `.gitignore`,
+  `PROGRESS.md`. Rama `feat/C8-C9-logs-y-analyze-real`.
+- **Notas:** Los dos tickets viajan en una sola rama porque C9
+  depende de C8 (el "hecho cuando" de C9 incluye que cada análisis
+  quede registrado, así que ambas piezas se prueban juntas).
+  - **C8 (`ia/logs.py`):** logger JSON Lines en
+    `logs/llm_interactions.jsonl` (configurable vía
+    `PGPILOT_LLM_LOG_PATH`, deshabilitable con
+    `PGPILOT_LLM_LOG_DISABLED=true`). 5 outcomes: `llm_ok`,
+    `llm_disabled`, `llm_error`, `llm_invalid_response`,
+    `cross_validation_failed`. Cada entrada lleva `timestamp`,
+    `request_id`, detección, recomendación, sanitized SQL (R4 — sin
+    literales), raw response truncado a 4000 chars, validaciones
+    Pydantic + cross + sandbox, y la prosa final mostrada (truncada
+    a 200 chars). Escritura thread-safe con lock global. Integrado
+    en `explain_recommendation` que ahora loggea en cada return.
+    Falla silenciosamente ante OSError (R5 a nivel logger).
+  - **C9 (`backend/orchestrator.py` + `backend/main.py`):** pipeline
+    `sanitize → EXPLAIN → parse → C1 → C2 → C3 (sandbox opcional) →
+    C4-C7 (con C8)`. El orquestador es `analyze_query(...)`,
+    función pura(-ish) inyectable testeable sin uvicorn ni pools
+    reales. `backend/main.py` agrega lifespan que extrae el snapshot
+    UNA vez al startup (cacheo en `app.state`) y abre los pools de
+    AppDB y sandbox desde env vars. Errores de Postgres mapeados a
+    HTTP: 400 sintaxis/objeto inexistente, 403 read-only (R7), 504
+    timeout, 503 sin AppDB configurada. Sandbox caído → `verdict=
+    null` sin romper pipeline. Cada request genera un `request_id`
+    UUID que viaja al log de C8 para correlación.
+  - **Contrato de respuesta enriquecido:** `recommendations[]` ahora
+    lleva `create_index_sql`, `justification`, `expected_impact`,
+    `selectivity`, `sandbox_verdict/reason`, y un sub-objeto
+    `explanation` con `text`, `suggested_rewrite`, `confidence`,
+    `source` ("llm" o "template"). Las claves top-level
+    (`detections`, `recommendations`) son las de B13 — sin breaking
+    para B14.
+- **Tests:** ✅ Verde. Suite completa **202/202** passing
+  (159 previos + 43 nuevos: 28 tests de `test_logs.py`, 10 de
+  `test_orchestrator.py`, 5 nuevos en `test_analyze.py`). El
+  "hecho cuando" del backlog C8 está cubierto en
+  `test_explain_recommendation_loggea_outcome_llm_ok_con_todos_los_campos`;
+  el de C9 en
+  `test_analyze_query_con_deteccion_devuelve_estructura_completa`
+  + `test_analyze_query_con_llm_real_mockeado_marca_source_llm`.
+  Black/isort verdes.
+- **Pendiente vigilar:** la prueba real punta-a-punta requiere
+  AppDB + sandbox levantados (no se cubre en unit). Cuando D16
+  aterrice, conviene re-correr `measure_c1_coverage.py` con el
+  endpoint /analyze real para validar que la pipeline completa
+  no introduce regresión sobre las 20 queries.
+
+### Decisiones
+
+#### Snapshot en cache `app.state` vs re-extraer por request (C9)
+- **Autor:** Alexander
+- **Contexto:** /analyze necesita el `SchemaSnapshot` para que C1
+  (y futuros detectores) razonen. Extraerlo en cada request agrega
+  varios cientos de ms (3 queries a `pg_catalog`/`pg_stats`).
+- **Alternativas:** (a) extraer en cada request, (b) cachear en
+  `app.state` al startup y refrescar manualmente reiniciando el
+  proceso, (c) cachear con TTL.
+- **Decisión:** (b). El snapshot vive en `app.state.snapshot` y se
+  llena en el lifespan con `extract_snapshot(appdb_pool)`.
+- **Razón:** para Demo Day el schema de AppDB no cambia en runtime;
+  pagar la latencia por request no aporta. (c) agrega complejidad
+  (TTL, invalidación) sin beneficio claro a 3 días del Demo. Si en
+  producción hace falta, sumar /refresh-snapshot como E-ticket.
+- **Trade-off:** un cambio de schema (CREATE INDEX manual, ALTER
+  TABLE) requiere reinicio del backend para que las recomendaciones
+  reflejen el estado nuevo. Aceptable para v1.
+
+#### Sandbox opcional en /analyze (C9 + R5)
+- **Autor:** Alexander
+- **Contexto:** B16+C3 entregaron el validador de sandbox, pero
+  exigirlo para responder /analyze haría que el producto no funcione
+  cuando el sandbox está caído (Docker apagado, schema corrupto,
+  etc.).
+- **Alternativas:** (a) sandbox obligatorio — sin él, error 503,
+  (b) sandbox opcional — sin él, `sandbox_verdict=null` y sigue.
+- **Decisión:** (b). `_safe_sandbox_validate` atrapa cualquier
+  excepción del sandbox y devuelve `None`. El pool del sandbox
+  arranca sólo si `SANDBOX_HOST` está definido.
+- **Razón:** R5 ("el producto debe funcionar sin LLM") se extiende
+  por simetría al sandbox. La columna "validado en sandbox" del
+  frontend es informativa, no bloqueante.
+- **Trade-off:** las recomendaciones sin verdict pierden una
+  defensa contra alucinaciones. Mitigación: cross-validation de
+  C6 ya descarta lo más obvio (columna inexistente, índice
+  duplicado) sin necesidad del sandbox.
+
+#### Logger JSONL append-only vs base de datos (C8)
+- **Autor:** Alexander
+- **Contexto:** Los logs estructurados podrían vivir en una tabla
+  Postgres dedicada o en archivo. JSONL append-only es la opción
+  más simple.
+- **Alternativas:** (a) tabla en AppDB (mismo Postgres del cliente —
+  contamina), (b) tabla en sandbox (sandbox es efímero por R6),
+  (c) BD nueva sólo para logs, (d) archivo JSONL append-only con
+  rotación delegada al operador.
+- **Decisión:** (d). `logs/llm_interactions.jsonl` por default,
+  configurable vía env. Rotación queda al operador (logrotate, cron).
+- **Razón:** sin dependencias nuevas, consumible con `jq`/`grep`/
+  `pandas.read_json(lines=True)`. Para Q&A del Demo Day basta con
+  `tail -f` en una terminal mientras el demo corre. Una BD agrega
+  setup, fixtures de tests, y migraciones — overkill para 3 días.
+- **Trade-off:** sin queries SQL sobre los logs (`SELECT outcome,
+  count(*) ...`). Si el equipo quiere dashboards en producción,
+  ingresar el archivo a Loki/Elastic es trivial — el formato ya es
+  estructurado.
+
+#### `request_id` por petición HTTP propagado al log (C8 + C9)
+- **Autor:** Alexander
+- **Contexto:** un análisis puede generar varias entradas en el log
+  (una por recomendación si C2 emite múltiples). Sin un `request_id`
+  común, debugging post-incidente es difícil ("¿qué request generó
+  esta entrada?").
+- **Decisión:** el endpoint /analyze genera `uuid.uuid4().hex` por
+  request y lo pasa a `analyze_query` → `explain_recommendation` →
+  `log_llm_interaction`.
+- **Razón:** correlación trivial con grep. Si en el futuro el
+  backend agrega un middleware de logs HTTP (uvicorn / nginx), el
+  mismo UUID puede aparecer en ambos.
+- **Trade-off:** ninguno relevante; el costo es 36 bytes por request.
+
 #### Medición empírica de cobertura del detector C1 contra AppDB v1
 - **Autor:** Andrés
 - **Archivos:** `scripts/measure_c1_coverage.py` (nuevo), `PROGRESS.md`.

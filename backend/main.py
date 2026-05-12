@@ -1,21 +1,143 @@
 """Aplicación FastAPI de PgPilot.
 
-Punto de entrada del backend. Define los endpoints y la configuración de
-CORS para que el frontend (Vite, localhost:5173) pueda llamarlo.
+Punto de entrada del backend. Define el endpoint `/analyze`
+(orquestación completa, ver `backend.orchestrator`) y la
+configuración de CORS para el frontend (Vite, localhost:5173).
 
-Por ahora /analyze es un stub que devuelve listas vacías. Se conectará al
-motor real en C9. Ver backend/CLAUDE.md.
+Estado actual:
+- B13: stub de /analyze (superado por C9).
+- C9: /analyze conecta a AppDB, corre EXPLAIN, ejecuta detector C1,
+  recomienda índices con C2, valida en sandbox (C3 cuando hay), y
+  pasa por la capa IA (C4-C7) que loggea via C8.
+- B14: CORS permite `http://localhost:5173`.
+
+Ver `backend/CLAUDE.md` para el contrato del endpoint y cómo extender.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+import os
+import uuid
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="PgPilot", version="0.1.0")
+from backend.orchestrator import AnalyzeError, analyze_query
+from conector import (
+    ConnectionConfig,
+    SchemaSnapshot,
+    create_pool,
+    extract_snapshot,
+)
+from sandbox import SandboxConfig, create_sandbox_pool
+
+log = logging.getLogger("pgpilot.backend")
+
+
+def _appdb_pool_from_env() -> Any | None:
+    """Lee `APPDB_*` del entorno y abre el pool. Devuelve `None` si no hay
+    configuración (entornos de test, despliegue inicial sin AppDB)."""
+    host = os.getenv("APPDB_HOST")
+    if not host:
+        return None
+    return create_pool(
+        ConnectionConfig(
+            host=host,
+            port=int(os.getenv("APPDB_PORT", "5434")),
+            dbname=os.getenv("APPDB_DB", "appdb"),
+            user=os.getenv("APPDB_USER", "app_user"),
+            password=os.getenv("APPDB_PASSWORD", ""),
+        )
+    )
+
+
+def _sandbox_pool_from_env() -> Any | None:
+    """Lee `SANDBOX_*` del entorno y abre el pool del sandbox. Sandbox
+    es opcional: si no se configura, /analyze sigue funcionando sin la
+    columna `sandbox_verdict`."""
+    host = os.getenv("SANDBOX_HOST")
+    if not host:
+        return None
+    return create_sandbox_pool(
+        SandboxConfig(
+            host=host,
+            port=int(os.getenv("SANDBOX_PORT", "5435")),
+            dbname=os.getenv("SANDBOX_DB", "sandbox"),
+            user=os.getenv("SANDBOX_USER", "sandbox_user"),
+            password=os.getenv("SANDBOX_PASSWORD", ""),
+        )
+    )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Abre los pools y extrae el snapshot al startup.
+
+    Decisión de diseño: el snapshot se extrae UNA vez al startup y se
+    cachea en `app.state`. Esto evita el overhead de re-extraer schema +
+    sizes + stats en cada request /analyze (varios cientos de ms en
+    AppDB v1). Si el schema cambia en runtime, hay que reiniciar el
+    backend (aceptable para Demo Day; un endpoint /refresh-snapshot
+    queda como E-ticket).
+
+    Si AppDB no está disponible al startup, /analyze responde 503 con
+    mensaje claro — no crasheamos el proceso, así el frontend puede
+    ver al menos /health y los desarrolladores pueden iterar sin AppDB
+    arriba.
+    """
+    appdb_pool: Any | None = None
+    sandbox_pool: Any | None = None
+    snapshot: SchemaSnapshot | None = None
+
+    try:
+        appdb_pool = _appdb_pool_from_env()
+        if appdb_pool is not None:
+            snapshot = extract_snapshot(appdb_pool)
+            log.info(
+                "AppDB conectada y snapshot extraído (%d tablas).",
+                len(snapshot.get("schema", {})),
+            )
+        else:
+            log.warning(
+                "APPDB_HOST no configurado; /analyze responderá 503 hasta que se "
+                "definan las variables de entorno APPDB_*.",
+            )
+    except Exception as exc:
+        log.error("No se pudo inicializar AppDB pool/snapshot: %r", exc)
+        appdb_pool = None
+        snapshot = None
+
+    try:
+        sandbox_pool = _sandbox_pool_from_env()
+        if sandbox_pool is not None:
+            log.info("Sandbox pool conectado.")
+        else:
+            log.info(
+                "SANDBOX_HOST no configurado; /analyze omitirá la validación "
+                "estructural (sandbox_verdict será null).",
+            )
+    except Exception as exc:
+        log.warning("No se pudo inicializar sandbox pool: %r", exc)
+        sandbox_pool = None
+
+    app.state.appdb_pool = appdb_pool
+    app.state.snapshot = snapshot
+    app.state.sandbox_pool = sandbox_pool
+
+    try:
+        yield
+    finally:
+        if appdb_pool is not None:
+            appdb_pool.close()
+        if sandbox_pool is not None:
+            sandbox_pool.close()
+
+
+app = FastAPI(title="PgPilot", version="0.1.0", lifespan=lifespan)
 
 # CORS: solo el frontend en dev (localhost:5173). En producción se
 # ajustará desde un settings module.
@@ -35,8 +157,13 @@ class AnalyzeRequest(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
-    """Forma de la respuesta de /analyze. Estable desde B13: el contrato
-    no cambia cuando se conecte al motor real, solo se llenan las listas.
+    """Forma de la respuesta de /analyze.
+
+    Estable desde B13 al nivel de claves top-level. Lo que C9 agregó es
+    el contenido enriquecido de cada item (recommendations ahora trae
+    `explanation`, `sandbox_verdict`, `create_index_sql`, etc.). Ver
+    `backend/orchestrator.analyze_query` para el shape exacto de cada
+    elemento.
     """
 
     detections: list[dict[str, Any]] = Field(default_factory=list)
@@ -44,14 +171,38 @@ class AnalyzeResponse(BaseModel):
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
-    """Stub: devuelve la estructura final con listas vacías.
+def analyze(req: AnalyzeRequest, request: Request) -> AnalyzeResponse:
+    """Orquesta la pipeline completa para una query del frontend.
 
-    El motor determinístico se conectará aquí en C9. La firma del request
-    y la respuesta son las definitivas.
+    503 si AppDB no se inicializó al startup. 4xx/5xx si Postgres
+    rechaza la query (ver `orchestrator._run_explain` para el mapeo).
     """
-    _ = req.query
-    return AnalyzeResponse()
+    appdb_pool = getattr(request.app.state, "appdb_pool", None)
+    snapshot = getattr(request.app.state, "snapshot", None)
+    sandbox_pool = getattr(request.app.state, "sandbox_pool", None)
+
+    if appdb_pool is None or snapshot is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "AppDB no está configurada. Setea APPDB_HOST/PORT/DB/USER/PASSWORD "
+                "y reinicia el backend."
+            ),
+        )
+
+    request_id = uuid.uuid4().hex
+    try:
+        body = analyze_query(
+            query=req.query,
+            appdb_pool=appdb_pool,
+            snapshot=snapshot,
+            sandbox_pool=sandbox_pool,
+            request_id=request_id,
+        )
+    except AnalyzeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    return AnalyzeResponse(**body)
 
 
 @app.get("/health")

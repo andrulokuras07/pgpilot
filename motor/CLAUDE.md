@@ -86,6 +86,95 @@ nodo. Cada match en `evidence["matches"]` incluye `table`, `column`,
   simple (`LIKE`, `IS NULL`, casts `((col)::tipo)`). Falso negativo
   por diseño: prefiere no recomendar a recomendar mal.
 
+### `detect_like_leading_wildcard(plan, snapshot) -> Detection`
+Detector D4. Dispara cuando un nodo scan (`Seq Scan`, `Bitmap Heap
+Scan`, `Bitmap Index Scan`) tiene un filtro `col ~~ '%...'` — patrón
+generado por Postgres a partir de `column LIKE '%texto'`. El wildcard
+al inicio impide el uso de índices btree regulares. Inspecciona
+`node.filter`, `node.recheck_cond` e `node.index_cond`. Cada match en
+`evidence["matches"]` incluye `table`, `column`, `filter`,
+`node_type`. Confianza 0.9.
+
+**Limitaciones conocidas:**
+- El regex `_LIKE_LEADING_WILDCARD_RE` matchea `\w+` para la columna,
+  por lo que no captura columnas entrecomilladas (`"weird name"`) ni
+  con caracteres especiales. Para AppDB v1 está OK.
+- Solo detecta el operador `~~` (forma interna de `LIKE`). Si en
+  algún plan apareciera `~~*` (ILIKE) también debería disparar; vale
+  añadirlo cuando lo encontremos en AppDB v2.
+
+### `detect_function_in_where(plan, snapshot) -> Detection`
+Detector D5. Dispara cuando un nodo scan tiene en `node.filter` una
+llamada a función típicamente no-immutable (`lower`, `upper`, `trim`,
+`btrim`, `coalesce`, `concat`, `replace`, `substring`, `left`,
+`right`, `reverse`, `length`, `date_trunc`, `extract`, `to_char`,
+`to_date`, `to_timestamp`, `to_number`, `abs`, `ceil`, `floor`,
+`round`, `trunc`, `regexp_replace`, `regexp_match`). Estas funciones
+sobre la columna impiden uso de índices btree planos; el detector
+sugiere índice funcional. Cada match incluye `table`, `function`,
+`filter`, `node_type`. Confianza 0.9.
+
+**Limitaciones conocidas:**
+- **Falso positivo si la función se aplica sobre un literal**
+  (`name = lower('X')`). La función ahí es inmutable, no impide
+  índice. Mitigación pendiente: parsear `node.filter` con `sqlglot`
+  y verificar que el argumento sea una columna, no un literal.
+- **Falso positivo si una columna se llama exactamente como una
+  función** (`lower TEXT` en una tabla custom). En AppDB v1 no
+  ocurre. Mitigación: el mismo parseo con sqlglot lo distinguiría.
+- La lista de funciones es cerrada (no consulta `pg_proc`).
+  Funciones custom marcadas como `VOLATILE` o `STABLE` que también
+  rompen índices no se detectan. Aceptable para el alcance del
+  producto.
+
+### `detect_or_across_tables(plan, snapshot) -> Detection`
+Detector D6. Dispara cuando `node.filter` de un nodo join
+(`Nested Loop`, `Hash Join`, `Merge Join`) — o, defensivamente, de un
+`Seq Scan` — contiene un `OR` cuyos lados referencian columnas
+calificadas por tablas/alias distintos (`t1.col OR t2.col`). Este
+patrón impide el uso de índices en cualquiera de las tablas y suele
+reescribirse como `UNION`. Cada match incluye `tables` (lista
+ordenada de alias/tablas implicados), `filter`, `node_type`.
+Confianza 0.85.
+
+**Limitaciones conocidas:**
+- **Heurística por regex `\w+\.\w+`:** asume `table.column` o
+  `alias.column`. Si la query usa `schema.tabla.col`, el regex
+  captura `schema.tabla`. En AppDB v1 (todo `public`) no aplica.
+- **No detecta `OR` cruzando tablas sin calificador** (`status = 1
+  OR category = 'x'` sin prefijo). Por diseño: sin prefijo no hay
+  evidencia estructural de cruce, podrían ser dos columnas de la
+  misma tabla. Falso negativo voluntario.
+- El detector reporta los alias tal cual aparecen en el filtro, no
+  las tablas físicas. Si el frontend necesita la tabla real, debe
+  cruzar con la metadata del plan.
+
+### `detect_correlated_subquery(plan, snapshot) -> Detection`
+Detector D7. Dispara cuando algún nodo del árbol tiene
+`subplan_name` que contiene la cadena `"SubPlan"`. Postgres usa
+`SubPlan N` para subqueries correlacionadas (se evalúan una vez por
+cada fila de la query externa) e `InitPlan N` para las no
+correlacionadas (una sola evaluación). El detector explícitamente NO
+matchea `InitPlan`. La recomendación documentada es reescribir como
+JOIN o `EXISTS`. Cada match incluye `subplan_name`, `node_type`,
+`inner_table` (tabla del SubPlan) y `outer_table` (relación del nodo
+con `subplan_name`). Confianza 0.95.
+
+**Características que lo hacen el detector más limpio en R2:**
+- No usa regex. Lee `node.subplan_name` directo del atributo tipado.
+- Recorrido propio DFS (no usa `find_nodes` con tipo, porque el
+  SubPlan puede colgar de muchos `node_type` distintos).
+- La sustring `"SubPlan"` viene del nombre que Postgres asigna, no
+  del SQL del usuario.
+
+**Limitaciones conocidas:**
+- No mide qué tan correlacionado está el SubPlan ni cuántas veces se
+  ejecuta. Reporta presencia, no impacto. La validación de impacto
+  vive en el sandbox (cuando se conecte el recomendador hermano).
+- `outer_table` se aproxima como `relation_name` del nodo que tiene
+  `subplan_name`; si el SubPlan cuelga de un join, devuelve la
+  primera relación interna que encuentra recorriendo hijos.
+
 ### `Recommendation` (frozen dataclass) — C2
 Salida del recomendador. Campos:
 - `kind: Literal["create_index", "analyze"]` — la acción sugerida.
@@ -217,7 +306,11 @@ motor/
 ├── detection.py    # Detection (contrato compartido) (C1)
 ├── detectors/
 │   ├── __init__.py
-│   └── seq_scan_on_large_table.py   # C1
+│   ├── seq_scan_on_large_table.py   # C1
+│   ├── like_leading_wildcard.py     # D4
+│   ├── function_in_where.py         # D5
+│   ├── or_across_tables.py          # D6
+│   └── correlated_subquery.py       # D7
 ├── recommender.py  # Recommendation + recommenders por detector (C2)
 └── CLAUDE.md       # este archivo
 ```

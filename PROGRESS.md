@@ -89,6 +89,107 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-12
+
+### Avances
+
+#### D4 + D5 + D6 + D7 — cuatro detectores estructurales de anti-patterns
+- **Autor:** Diego Enderman (commit `bb0d97d`, PR #27, mergeado `9f184c1`).
+- **Archivos:** `motor/detectors/like_leading_wildcard.py`,
+  `motor/detectors/function_in_where.py`,
+  `motor/detectors/or_across_tables.py`,
+  `motor/detectors/correlated_subquery.py`,
+  `motor/__init__.py`, `motor/detectors/__init__.py`,
+  `tests/motor/detectors/test_like_leading_wildcard.py`,
+  `tests/motor/detectors/test_function_in_where.py`,
+  `tests/motor/detectors/test_or_across_tables.py`,
+  `tests/motor/detectors/test_correlated_subquery.py`.
+  Rama `feat/D4-D5-D6-D7-detectores`.
+- **Notas:** los cuatro detectores comparten el contrato cuajado en
+  C1 (`detect_X(plan, snapshot) -> Detection` con
+  `evidence={"matches": [...]}`). Los cuatro son funciones puras (R9)
+  y operan sobre la estructura del árbol del plan (R2), no sobre el
+  SQL crudo.
+  - **D4 (`like_leading_wildcard`):** busca filtros `col ~~ '%...'` en
+    `node.filter`, `node.recheck_cond` e `node.index_cond` de nodos
+    `Seq Scan`, `Bitmap Heap Scan` y `Bitmap Index Scan`. Recomendación
+    documentada: índice `pg_trgm` o full-text. Confianza 0.9.
+  - **D5 (`function_in_where`):** detecta llamadas a funciones
+    típicamente no-immutable (`lower`, `upper`, `trim`, `date_trunc`,
+    `extract`, `to_char`, etc. — ~20 funciones) dentro de `node.filter`
+    de scans. Recomendación: índice funcional. Confianza 0.9.
+    **FP conocido:** dispararía si una columna se llama exactamente
+    como una función o si la función está sobre un literal
+    (`name = lower('X')`). Aceptable en AppDB v1; vale parsear con
+    sqlglot cuando se vuelva problemático.
+  - **D6 (`or_across_tables`):** parte `node.filter` por `\bOR\b`,
+    extrae referencias `tabla.columna` por regex, y dispara cuando
+    los lados del OR involucran ≥2 tablas distintas. Recorre nodos
+    join y, defensivamente, `Seq Scan` (Postgres a veces evalúa el
+    OR en el scan inferior). Recomendación: reescribir como UNION.
+    Confianza 0.85. **Asunción:** los alias matchean `\w+\.\w+`; con
+    esquema explícito (`schema.tabla.col`) captura `schema.tabla` —
+    irrelevante en AppDB v1 (todo en `public`).
+  - **D7 (`correlated_subquery`):** recorre el árbol DFS y dispara
+    cuando un nodo tiene `subplan_name` con `"SubPlan"` dentro.
+    Distingue correctamente `InitPlan` (no correlacionado, una vez)
+    de `SubPlan` (correlacionado, una vez por fila). No usa regex —
+    lee el atributo tipado directo. Recomendación: reescribir como
+    JOIN o EXISTS. Confianza 0.95. Es el más limpio de los cuatro
+    en términos de R2.
+  - Registrados en `motor/detectors/__init__.py` y re-exportados desde
+    `motor/__init__.py`. Ninguno consume `snapshot` (son puramente
+    estructurales); la firma estándar lo recibe igual para uniformidad
+    con C1 y futuros detectores que sí lo necesiten.
+- **Tests:** ✅ 22 nuevos verde (5 D4 + 7 D5 + 5 D6 + 5 D7). Suite
+  total al cierre: 224/224 verde.
+
+#### R15 — Cierre del gap de documentación de D4-D7
+- **Autor:** Andrés Angulo (a nombre del cambio de Diego).
+- **Archivos:** `PROGRESS.md` (esta entrada), `motor/CLAUDE.md`
+  (4 secciones nuevas en "API pública" + entrada en "Estructura
+  interna" + 4 detectores listados en "Cómo extender"),
+  `docs/patterns/README.md` (4 filas del índice flipped a
+  ✅ Implementado), `docs/patterns/like-leading-wildcard.md` (nuevo),
+  `docs/patterns/function-in-where.md` (nuevo),
+  `docs/patterns/or-across-tables.md` (nuevo),
+  `docs/patterns/correlated-subquery.md` (nuevo). Rama
+  `docs/D4-D7-r15-gap`.
+- **Notas:** el commit `bb0d97d` aterrizó código + tests pero no
+  actualizó `PROGRESS.md`, `motor/CLAUDE.md` ni `docs/patterns/`. R15
+  exige ambas actualizaciones antes de `git push`. Este PR cierra el
+  gap retroactivamente. No hay cambio de código: solo documentación,
+  catálogo de patterns y entradas de bitácora. La revisión técnica
+  de D4-D7 (cumplimiento de R1/R2/R9/R10/R14, calidad de tests,
+  limitaciones conocidas) se hizo antes de esta entrada y quedó
+  registrada arriba.
+- **Tests:** ✅ N/A (cambio solo de docs). `pytest tests/motor`
+  sigue verde local (102 sin integration, 30/30 de
+  `tests/motor/detectors/`).
+
+### Decisiones
+
+#### Cierre retroactivo de R15 vs reabrir el PR de Diego
+- **Autor:** Andrés Angulo
+- **Contexto:** PR #27 mergeó a main sin la documentación que R15
+  exige. Reabrirlo significaría revertir y rehacer; cerrar el gap
+  retroactivamente en otra rama mantiene la historia limpia pero
+  documenta R15 después del push.
+- **Alternativas:** (a) revertir #27 y pedir que Diego rehaga el PR
+  con docs; (b) cerrar el gap en una rama `docs/D4-D7-r15-gap` y
+  mergearla como PR independiente.
+- **Decisión:** (b).
+- **Razón:** revertir agrega ruido en la historia y bloquea el resto
+  del pipeline de detectores con 2 días al Demo Day; el código es
+  correcto y los tests están verdes. Documentar en una rama aparte
+  cumple R15 y deja el código en main desde ya.
+- **Trade-off:** la regla R15 se vuelve "antes de cerrar la entrada
+  del backlog" en lugar de "antes del push", flexibilizando el sentido
+  literal. Acordado como excepción puntual; el patrón sigue siendo:
+  documentación en el mismo PR que el código.
+
+---
+
 ## 2026-05-11
 
 ### Avances

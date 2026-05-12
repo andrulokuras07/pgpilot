@@ -147,6 +147,7 @@ Las actividades se agrupan en 6 fases. Dentro de cada fase, varias actividades p
 - **Qué hacer:** función pura que recibe el árbol del plan + metadata del schema y devuelve `Detection(found, confidence, evidence)`. Lógica: encuentra todos los nodos Seq Scan, para cada uno verifica si la tabla tiene >100k filas, y si existe un índice btree sobre la columna del filtro `WHERE`. La detección debe ser sobre la estructura del plan, NO sobre el texto del SQL. Esto es lo que dará el bonus de AppDB v2.
 - **Depende de:** B4, B9
 - **Hecho cuando:** test verde con un plan de seq scan sobre tabla grande con índice disponible (devuelve found=true) y otro con seq scan sobre tabla pequeña (devuelve found=false).
+- **Frontera explícita con D16:** C1 SÓLO dispara cuando el índice EXISTE y el planner lo ignora (caso típico: stats desactualizadas → `ANALYZE`). El caso "tabla grande SIN índice en la columna del filtro" lo cubre **D16** (Detector #13), con recomendación distinta (`CREATE INDEX`). No mezclar ambos en C1: la recomendación es diferente y la confusión penaliza precisión.
 
 ### C2. Recomendador de índice básico
 - **Qué hacer:** función que recibe una detección de C1 y genera una recomendación con: SQL del CREATE INDEX, justificación (qué columna, por qué btree, etc.), impacto esperado en costo. La justificación viene de los datos de selectividad: `n_distinct / row_count` da la selectividad estimada.
@@ -267,14 +268,56 @@ Las actividades se agrupan en 6 fases. Dentro de cada fase, varias actividades p
 - **Depende de:** B9
 - **Hecho cuando:** detector pasa test, documentado.
 
+### D16. Detector #13: Seq Scan sobre tabla grande sin índice en columna del filtro
+- **Qué hacer:** función pura, mismo shape que C1 (`detect_*(plan, snapshot) -> Detection`). Localiza Seq Scan sobre tablas ≥100k filas donde existe filtro WHERE pero **NO existe** índice btree sobre la columna del filtro. Reuso ~80% del código de C1: invierte el predicado `has_index` (línea 100-105 del actual `seq_scan_on_large_table.py`). Recomendación derivada: `CREATE INDEX idx_<tabla>_<col> ON <tabla>(<col>)`.
+- **Depende de:** B4, B9, C1 (frontera explícita)
+- **Hecho cuando:** test verde para Q01 (posts.author_id sin índice → `create_index`), Q06 (mismo posts.author_id en BETWEEN), Q08 (posts.author_id con ORDER BY), Q09 (posts.author_id en subquery correlacionada outer). El script `scripts/measure_c1_coverage.py` debe reportar TP en los 4 casos al sumar este detector.
+- **Cobertura objetivo:** Q01, Q06, Q08, Q09 (4 queries de las 20 plantadas).
+
+### D17. Detector #14: Oportunidad de índice parcial
+- **Qué hacer:** detector que identifica el patrón "filtro compuesto donde una columna es booleana con alta concentración" (ej: `WHERE user_id = $1 AND read = false` con 95% de filas con `read=true`). Cruza el filtro del nodo con `pg_stats.most_common_vals` + `most_common_freqs` (extender B4 si hace falta capturar `most_common_freqs`) para detectar que el segundo predicado tiene baja selectividad esperada. Recomendación: `CREATE INDEX ... ON tabla(col) WHERE bool_col = valor`.
+- **Depende de:** B4, B9
+- **Hecho cuando:** test verde para Q11 (notifications.user_id + read=false). El recomendador emite SQL con cláusula `WHERE`.
+- **Cobertura objetivo:** Q11 (1 query).
+
+### D18. Detector #15: Error de cardinalidad en JOIN multi-condición
+- **Qué hacer:** detector que recorre nodos `Hash Join`, `Merge Join`, `Nested Loop` y compara `plan_rows` contra `actual_rows`. Si la razón supera 5x **y** el filtro WHERE involucra dos o más columnas con AND sobre la misma tabla, recomendar `CREATE STATISTICS` multi-columna. Operar sobre estructura: la condición AND se infiere del campo `Filter` o `Join Filter` ya parseado.
+- **Depende de:** B9, D2 (mismo helper de comparación estimated vs actual)
+- **Hecho cuando:** test verde para Q13 (posts JOIN users con AND sobre is_verified, is_active, is_deleted). Recomendación incluye nombres reales de columnas y tabla.
+- **Cobertura objetivo:** Q13 (1 query).
+
+### D19. Detector #16: HAVING que debería ser WHERE
+- **Qué hacer:** detector que parsea el SQL con sqlglot (excepción legítima a R2 dentro del módulo IA — ya está en stack), localiza la cláusula `HAVING` y verifica si todas sus referencias son columnas del `GROUP BY` (no agregados como `count(*)`, `sum(...)`). En ese caso el filtro puede moverse a `WHERE` antes de la agregación. Recomendación: rewrite del SQL.
+- **Depende de:** B9, B10 (sanitizador no aplica al rewrite, pero sí al display)
+- **Hecho cuando:** test verde para Q16 (`GROUP BY author_id HAVING author_id = $1`). Rewrite propuesto válido (parseable con sqlglot).
+- **Cobertura objetivo:** Q16 (1 query).
+
+### D20. Detector #17: IN con subquery debería ser EXISTS
+- **Qué hacer:** detector que busca en el plan nodos `Hash Semi Join` o `SubPlan` cuyo outer es la tabla principal y el inner es una subquery sin correlación. Cruzar con el SQL parseado por sqlglot: si la subquery está en un `IN (SELECT ...)` y la columna es la PK del outer, recomendar reescribir como `WHERE EXISTS`.
+- **Depende de:** B9
+- **Hecho cuando:** test verde para Q17 (`WHERE id IN (SELECT author_id FROM posts ...)`). Rewrite propuesto válido.
+- **Cobertura objetivo:** Q17 (1 query).
+
+### D21. Detector #18: NOT IN con subquery potencialmente NULL
+- **Qué hacer:** detector que parsea el SQL con sqlglot, busca el patrón `WHERE col NOT IN (SELECT ...)` donde la columna del SELECT interno admite NULL (consultar `snapshot["schema"]` para `is_nullable=True`). Esto es **bug silencioso + lento**: si el subquery devuelve algún NULL, el resultado es vacío. Recomendación: reescribir como `WHERE NOT EXISTS (SELECT 1 FROM ... WHERE ... = ...)`.
+- **Depende de:** B2, B9
+- **Hecho cuando:** test verde para Q19 (`WHERE id NOT IN (SELECT author_id FROM posts)`). Detección incluye explicación de la trampa de NULL en `evidence`.
+- **Cobertura objetivo:** Q19 (1 query). **Severidad ALTA** porque es bug silencioso, no solo performance.
+
+### D22. Detector #19: count(*) sobre tabla grande sin WHERE
+- **Qué hacer:** detector que localiza nodos `Aggregate` (estrategia `Plain`) cuyo único hijo es un `Seq Scan` (o `Parallel Seq Scan`) sobre una tabla ≥100k filas sin `Filter`. El SQL del usuario es `SELECT count(*) FROM tabla` (o variantes). Recomendación: usar estimación de `pg_class.reltuples` o `pg_stat_user_tables.n_live_tup` cuando el conteo exacto no sea crítico; o mantener un contador denormalizado.
+- **Depende de:** B9
+- **Hecho cuando:** test verde para Q20 (`SELECT count(*) FROM posts`). Detección sólo dispara sobre tablas grandes; tablas chicas no son problema.
+- **Cobertura objetivo:** Q20 (1 query, también aplica a `comments`, `likes`, `notifications` cuando son grandes).
+
 ### D13. Recomendador de índices con selectividad real
 - **Qué hacer:** ampliar C2 para considerar todos los detectores. Calcular selectividad de cada filtro usando `n_distinct` y `null_frac` de B4. Si la columna tiene 3 valores distintos en una tabla de 10M filas, NO recomendar índice (ruido). Para índices compuestos, ordenar columnas por selectividad descendente (más selectiva primero). Considerar índices parciales para filtros con WHERE constante repetido.
-- **Depende de:** D2-D12, B4
+- **Depende de:** D2-D12, D16-D22, B4
 - **Hecho cuando:** dado un plan con seq scan, el recomendador descarta la recomendación si la selectividad es baja, y propone orden correcto en compuestos.
 
 ### D14. Tests de cobertura sobre AppDB
-- **Qué hacer:** identificar las 20 queries plantadas de AppDB (vienen documentadas en el repo del profe). Para cada una, escribir test que verifica que el detector correcto la identifica con la recomendación esperada. Llevar el número visible: "X de 20 detectadas" en un README de tests.
-- **Depende de:** D2-D12
+- **Qué hacer:** identificar las 20 queries plantadas de AppDB (vienen documentadas en el repo del profe). Para cada una, escribir test que verifica que el detector correcto la identifica con la recomendación esperada. Llevar el número visible: "X de 20 detectadas" en un README de tests. La base ya existe: `scripts/measure_c1_coverage.py` (2026-05-11) corre el flujo y reporta TP/FP/FN/TN; convertir cada caso en test parametrizado de pytest con marker `integration` y sumar los detectores nuevos a medida que aterricen.
+- **Depende de:** D2-D12, D16-D22
 - **Hecho cuando:** existen 20 tests, mínimo 16 pasan (80% es la línea segura para el Criterio 2.1).
 
 ### D15. Sistema anti-falsos-positivos

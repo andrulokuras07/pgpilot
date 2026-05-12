@@ -115,6 +115,18 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Decisiones
 
+#### Expansión del backlog para cerrar brecha de cobertura — D16-D22
+- **Autor:** Andrés
+- **Contexto:** la medición de hoy mostró 0/20 con C1. Mapeando el backlog vigente (Fase 3) contra las 20 queries plantadas, se identificaron **7 queries sin detector planeado** aun ejecutando toda la Fase 3 perfectamente: **Q01** (caso clásico Seq Scan + índice falta, asumido erróneamente cubierto por C1), **Q11** (índice parcial), **Q13** (cardinalidad multi-condición), **Q16** (HAVING como WHERE), **Q17** (IN→EXISTS), **Q19** (NOT IN con NULL), **Q20** (count(*) tabla grande). Con el backlog tal como estaba, el techo proyectado era ~12-13/20 (60-65%), insuficiente para Criterio 2.1 (≥16/20 vale 10-12 pts).
+- **Alternativas:**
+  - (a) Aceptar 12-13/20 y compensar con narrativa de pitch.
+  - (b) **Expandir el backlog con 7 detectores adicionales** (D16-D22), uno por cada query sin cobertura. Cada uno está en la línea de costo de 1-3 h (varios reusan ≥80% del andamio de C1).
+  - (c) Combinar varios anti-patterns en un solo "detector genérico" más ambicioso.
+- **Decisión:** (b). Agregados al backlog **D16 (missing-index, cubre Q01+Q06+Q08+Q09), D17 (índice parcial, Q11), D18 (cardinalidad, Q13), D19 (HAVING→WHERE, Q16), D20 (IN→EXISTS, Q17), D21 (NOT IN con NULL, Q19), D22 (count(*) tabla grande, Q20)**. Se aclaró la frontera de C1 ↔ D16 en la entrada de C1 del backlog. Se actualizaron dependencias de D13 y D14 para incluir D16-D22.
+- **Razón:** mantener un detector por anti-pattern preserva claridad de recomendaciones (cada uno emite SQL distinto: `ANALYZE` vs `CREATE INDEX` vs `CREATE STATISTICS` vs rewrite). Combinar en un detector genérico oscurece la explicación al usuario y dificulta los tests por anti-pattern.
+- **Trade-off:** el equipo tiene 7 detectores adicionales por implementar a 3 días del Demo Day. **No todos van a aterrizar**. Priorización propuesta por ratio cobertura/costo: D16 primero (4 queries de un golpe), luego D22 (count, 1 h), D19 (HAVING, 2 h), D20 (IN→EXISTS, 2 h), D17 (índice parcial, 3 h), D18 (cardinalidad, 3 h), D21 (NOT IN, 2 h). Con C1 + Fase 3 original (D2-D12) + D16 mínimo → ~16-17/20 en escenario optimista. Sin D16 el techo se queda en ~12-13/20.
+- **Cómo verificar:** correr `scripts/measure_c1_coverage.py` después de cada detector nuevo y registrar el delta en PROGRESS.md. El script ya está preparado para crecer (sumar detectores en su loop principal).
+
 #### Por qué C1 detectó 0/20 y qué hacer al respecto
 - **Autor:** Andrés (basado en la medición de hoy)
 - **Contexto:** la rúbrica exige ≥16/20 queries detectadas. C1

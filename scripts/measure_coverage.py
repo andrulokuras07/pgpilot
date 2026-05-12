@@ -23,6 +23,7 @@ Variables de entorno: idénticas a measure_c1_coverage.py.
 
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 from pathlib import Path
@@ -37,10 +38,15 @@ from motor import (  # noqa: E402
     detect_correlated_subquery,
     detect_function_in_where,
     detect_like_leading_wildcard,
+    detect_missing_covering_index,
     detect_missing_index,
+    detect_nested_loop_large_outer,
     detect_or_across_tables,
     detect_partial_index_opportunity,
+    detect_select_star,
     detect_seq_scan_on_large_table,
+    detect_type_mismatch,
+    detect_unnecessary_cte_materialize,
     parse_explain,
 )
 from scripts.measure_c1_coverage import PLANTED, PlantedQuery  # noqa: E402
@@ -51,6 +57,11 @@ DETECTORS: tuple[tuple[str, Callable[[Any, Any], Detection]], ...] = (
     ("D5", detect_function_in_where),
     ("D6", detect_or_across_tables),
     ("D7", detect_correlated_subquery),
+    ("D8", detect_nested_loop_large_outer),
+    ("D9", detect_select_star),
+    ("D10", detect_missing_covering_index),
+    ("D11", detect_type_mismatch),
+    ("D12", detect_unnecessary_cte_materialize),
     ("D16", detect_missing_index),
     ("D17", detect_partial_index_opportunity),
     ("D18", detect_cardinality_misestimate),
@@ -78,8 +89,21 @@ def _explain(pool, sql: str) -> Any:
         return {"__error__": str(exc)}
 
 
-def _run_all(plan: Any, snapshot: Any) -> dict[str, Detection]:
-    return {code: fn(plan, snapshot) for code, fn in DETECTORS}
+def _run_all(plan: Any, snapshot: Any, sql: str) -> dict[str, Detection]:
+    """Llama cada detector pasándole `sql` por kwarg cuando lo acepta.
+
+    Convención: detectores con firma extendida `(plan, snapshot, *, sql=None)`
+    (D9, D11) reciben el SQL plantado para poder operar; el resto se llama
+    con la firma estándar `(plan, snapshot)`.
+    """
+    out: dict[str, Detection] = {}
+    for code, fn in DETECTORS:
+        params = inspect.signature(fn).parameters
+        if "sql" in params:
+            out[code] = fn(plan, snapshot, sql=sql)
+        else:
+            out[code] = fn(plan, snapshot)
+    return out
 
 
 def main() -> int:
@@ -104,7 +128,7 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 results.append((q, {"status": "PARSE_FAIL", "msg": str(exc)}))
                 continue
-            detections = _run_all(plan, snapshot)
+            detections = _run_all(plan, snapshot, q.sql)
             results.append(
                 (
                     q,
@@ -118,11 +142,9 @@ def main() -> int:
 
         # Tabla principal
         print("## Resultados por query\n")
-        header = (
-            "| Q | Anti-pattern | Top node | C1 | D4 | D5 | D6 | D7 | "
-            "D16 | D17 | D18 | Cubierta |"
-        )
-        sep = "|---|---|---|---|---|---|---|---|---|---|---|---|"
+        detector_headers = " | ".join(code for code, _ in DETECTORS)
+        header = f"| Q | Anti-pattern | Top node | {detector_headers} | Cubierta |"
+        sep = "|" + "---|" * (3 + len(DETECTORS) + 1)
         print(header)
         print(sep)
 

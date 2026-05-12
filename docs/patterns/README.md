@@ -21,11 +21,11 @@ archivo `.md`. Este `README.md` es el índice + la plantilla.
 | 6 | Función no-immutable en WHERE | [`function-in-where.md`](function-in-where.md) | `motor.detect_function_in_where` (D5) | ✅ Implementado |
 | 7 | OR sobre columnas de tablas distintas | [`or-across-tables.md`](or-across-tables.md) | `motor.detect_or_across_tables` (D6) | ✅ Implementado |
 | 8 | Subquery correlacionada | [`correlated-subquery.md`](correlated-subquery.md) | `motor.detect_correlated_subquery` (D7) | ✅ Implementado |
-| 9 | Nested Loop con tabla externa grande | _(pendiente)_ | D8 | ⬜ Backlog |
-| 10 | `SELECT *` con pocas columnas usadas | _(pendiente)_ | D9 | ⬜ Backlog |
-| 11 | Falta de índice cubriente | _(pendiente)_ | D10 | ⬜ Backlog |
-| 12 | Índice no usado por mismatch de tipo | _(pendiente)_ | D11 | ⬜ Backlog |
-| 13 | CTE materializada innecesariamente | _(pendiente)_ | D12 | ⬜ Backlog |
+| 9 | Nested Loop con tabla externa grande | [`nested-loop-large-outer.md`](nested-loop-large-outer.md) | `motor.detect_nested_loop_large_outer` (D8) | ✅ Implementado |
+| 10 | `SELECT *` con pocas columnas usadas | [`select-star.md`](select-star.md) | `motor.detect_select_star` (D9) | ✅ Implementado |
+| 11 | Falta de índice cubriente | [`missing-covering-index.md`](missing-covering-index.md) | `motor.detect_missing_covering_index` (D10) | ✅ Implementado |
+| 12 | Índice no usado por mismatch de tipo | [`type-mismatch.md`](type-mismatch.md) | `motor.detect_type_mismatch` (D11) | ✅ Implementado |
+| 13 | CTE materializada innecesariamente | [`unnecessary-cte-materialize.md`](unnecessary-cte-materialize.md) | `motor.detect_unnecessary_cte_materialize` (D12) | ✅ Implementado |
 | 14 | Oportunidad de índice parcial | [`partial-index-opportunity.md`](partial-index-opportunity.md) | `motor.detect_partial_index_opportunity` (D17) | ✅ Implementado |
 | 15 | Error de cardinalidad en JOIN multi-condición | [`cardinality-misestimate.md`](cardinality-misestimate.md) | `motor.detect_cardinality_misestimate` (D18) | ✅ Implementado |
 | 16 | HAVING que debería ser WHERE | _(pendiente)_ | D19 | ⬜ Backlog |

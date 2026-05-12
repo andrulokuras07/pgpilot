@@ -249,6 +249,169 @@ con `subplan_name`). Confianza 0.95.
   `subplan_name`; si el SubPlan cuelga de un join, devuelve la
   primera relación interna que encuentra recorriendo hijos.
 
+### `detect_nested_loop_large_outer(plan, snapshot) -> Detection`
+Detector D8. Dispara cuando un nodo `Nested Loop` tiene como hijo
+externo (Outer) un subárbol que emite >10k filas. Postgres ejecuta
+el lado interno una vez por cada fila del externo, así que un Nested
+Loop con outer grande casi siempre debería ser `Hash Join` o
+`Merge Join`. El detector resuelve qué hijo es el outer con
+`Parent Relationship == "Outer"`; si no está marcado (Postgres no
+siempre lo emite), toma el primer hijo por convención. Usa
+`actual_rows` cuando EXPLAIN ANALYZE las trae, si no `plan_rows`.
+Cada match incluye `outer_table`, `outer_node_type`, `outer_rows`,
+`outer_rows_source` (`"actual"` o `"plan"`), `join_type`. Confianza
+0.8.
+
+**Umbral:** `LARGE_OUTER_MIN_ROWS = 10_000`. Por debajo de eso,
+Nested Loop suele ser óptimo y disparar sería FP.
+
+**Limitaciones conocidas:**
+- No mide cuántas veces se ejecuta el inner ni el costo real de
+  cada loop. Reporta presencia, no impacto. La cuantificación va al
+  recomendador (cruzando con snapshot y, eventualmente, sandbox).
+- Reporta `outer_table` como la primera relación que encuentra
+  recorriendo hijos. En joins anidados puede no ser intuitivo;
+  útil para la prosa, no parte del criterio de detección.
+
+### `detect_select_star(plan, snapshot, *, sql=None) -> Detection`
+Detector D9. **Único detector del módulo con firma extendida**:
+acepta `sql: str | None` como keyword-only opcional. Sin SQL no hay
+forma estructural de detectar `SELECT *` (Postgres ya resolvió la
+lista de proyección antes de generar el EXPLAIN), así que cuando
+`sql is None` el detector devuelve `Detection(found=False)` en lugar
+de levantar.
+
+Parsea el SQL con `sqlglot.parse_one(sql, dialect="postgres")`,
+recorre todos los nodos `Select` del árbol, y dispara cuando la
+lista de proyección contiene un `Star` (no calificado o `tabla.*`).
+Para cada match añade `index_only_candidate: bool` cruzando con el
+plan: True si hay al menos un `Index Scan` en el árbol (oportunidad
+de pasar a `Index Only Scan` con índice cubriente). Cada match
+incluye `table`, `index_only_candidate`, `from_text`. Confianza 0.85.
+
+**Robustez:** ante SQL no parseable (`sqlglot.errors.ParseError`)
+devuelve `found=False` silenciosamente.
+
+**Convención de firma extendida:** el orquestador (`/backend`)
+detecta esta firma vía inspección de parámetros y pasa `sql=`
+explícitamente solo a los detectores que lo aceptan. Si en el
+futuro otro detector necesita la query (D11 con cast implícito,
+por ejemplo), debe seguir el mismo patrón keyword-only para no
+romper la firma estándar de los detectores estructurales.
+
+**Limitaciones conocidas:**
+- **No reporta qué columnas se usan realmente.** Determinar eso
+  requiere análisis de WHERE/JOIN/ORDER y queda en el recomendador.
+  D9 solo señala la oportunidad estructural.
+- **Detecta `SELECT *` en cada subquery por separado.** Una outer
+  con columnas explícitas y una inner con `*` dispara un match (la
+  inner es el problema).
+- **No distingue `SELECT *` justificado** (e.g.
+  `INSERT INTO t SELECT * FROM staging`) de no justificado. El
+  recomendador y el LLM deben moderar la prosa en esos contextos.
+
+### `detect_missing_covering_index(plan, snapshot) -> Detection`
+Detector D10. Estructural puro. Dispara una vez por cada `Index Scan`
+en el plan (NO matchea `Index Only Scan`, que ya resuelve sin heap
+fetch) **que devuelva ≥ `INDEX_SCAN_MIN_ROWS = 50` filas**. Cada
+`Index Scan` implica un heap fetch por fila devuelta: si todas las
+columnas que la query necesita cupieran en el índice (via `INCLUDE`
+o columnas extra del índice), el plan pasaría a `Index Only Scan`.
+La lista exacta de columnas a incluir la decide el recomendador
+(cruzando con el SQL sanitizado); D10 solo reporta la oportunidad y
+enriquece el match con metadata del índice existente desde el
+snapshot. Cada match incluye `table`, `index_name`, `index_cond`,
+`indexed_columns`, `include_columns`. Confianza 0.7.
+
+**Umbral de filas:** `INDEX_SCAN_MIN_ROWS = 50`. Un `Index Scan` que
+devuelve <50 filas (lookup por PK, filtros muy selectivos) casi
+nunca se beneficia de un cubriente: el heap fetch ahorrado es
+despreciable y el `INCLUDE` solo encarece el índice. Filtrar aquí
+elimina la mayoría de FPs estructurales obvios. El detector prefiere
+`actual_rows` sobre `plan_rows` cuando EXPLAIN ANALYZE las trae.
+
+**Limitaciones conocidas:**
+- **Confianza 0.7 — más laxa del catálogo.** Por encima del umbral,
+  no todo `Index Scan` se beneficia: si las columnas extra son
+  enormes (`text`), el `INCLUDE` cuesta más de lo que ahorra. El
+  recomendador (con sandbox) debe filtrar el caso antes de emitir
+  prosa enfática.
+- **No reporta `Heap Fetches` numéricos.** Postgres no expone ese
+  contador en `Index Scan` (solo en `Index Only Scan` con visibility
+  map). El detector se conforma con la señal estructural.
+- **No detecta `Bitmap Heap Scan` como candidato.** Bitmap con
+  muchas filas también podría beneficiarse, pero la decisión es
+  más compleja y queda fuera de scope.
+
+### `detect_type_mismatch(plan, snapshot, *, sql=None) -> Detection`
+Detector D11. Dispara cuando un nodo scan (`Seq Scan`, `Bitmap Heap
+Scan`, `Bitmap Index Scan`) tiene en `node.filter` el patrón
+`((col)::tipo = valor)` — notación de Postgres para un cast sobre la
+columna. Un cast sobre la columna impide usar el índice btree sobre
+esa columna: el planner no puede evaluarlo sin transformar cada
+entrada del índice. El detector adicionalmente verifica que existe
+un índice btree (primera columna = `col`) en el snapshot; sin índice,
+el Seq Scan es inevitable y el pattern correcto es D16. Cada match
+incluye `table`, `column`, `cast_type`, `filter`, `node_type`,
+`index_name`. Confianza 0.9.
+
+**Firma extendida:** acepta `sql: str | None = None` como
+keyword-only, siguiendo el patrón de D9 (`detect_select_star`).
+Hoy el parámetro no se usa; reservado para validación futura del
+tipo declarado en el schema contra el tipo del cast. Los detectores
+que necesiten el SQL del usuario deben seguir este mismo patrón.
+
+**Regex interno:** `_CAST_ON_COLUMN_RE = r"\(\((\w+)\)::(\w+)"`.
+Opera sobre el campo `node.filter` emitido por Postgres (estable en
+PG 12-16). Permitido por R2: el campo es generado por Postgres, no es
+el SQL crudo del usuario.
+
+**Limitaciones conocidas:**
+- **Formatos alternativos de cast.** `CAST(col AS tipo)` (forma
+  estándar SQL) y `col::tipo` sin dobles paréntesis no matchean el
+  regex. En EXPLAIN de Postgres 12-16 el formato `((col)::tipo` es
+  el estándar; si una versión futura cambia la representación, el
+  detector deja de funcionar silenciosamente (FN, no crash).
+- **Cast sobre expresión compuesta.** `((a + b)::integer = 5)` no
+  matchea porque `a + b` no es `\w+`. Falso negativo voluntario.
+- **Sin filtro de tamaño de tabla.** Un cast en una tabla de 50 filas
+  dispara con la misma confianza que en una de 10M. El recomendador
+  debe moderar la prosa para tablas pequeñas.
+
+### `detect_unnecessary_cte_materialize(plan, snapshot) -> Detection`
+Detector D12. Dispara cuando el plan contiene nodos `CTE Scan` cuya
+`cte_name` aparece exactamente una vez y el plan no tiene ningún
+nodo `Recursive Union`. Cuando una CTE no recursiva se referencia
+una sola vez, materializarla como tabla temporal interna (el
+comportamiento por defecto hasta Postgres 11) es innecesario en
+Postgres 12+: el planner puede inlinar la CTE y optimizar la query
+entera. La recomendación es añadir `NOT MATERIALIZED` a la cláusula
+WITH. Si la misma `cte_name` aparece en dos nodos `CTE Scan`, la
+materialización es útil (evita recalcular); no se reporta. Si hay
+un `Recursive Union` en cualquier lugar del plan, el detector es
+conservador y no reporta ninguna CTE (no podemos distinguir cuál
+nodo corresponde a la CTE recursiva sin contexto adicional). Cada
+match incluye `cte_name`, `reference_count`, `node_type`,
+`plan_rows`. Confianza 0.85.
+
+**Limitaciones conocidas:**
+- **Heurístico conservador ante `Recursive Union`.** Cualquier
+  `Recursive Union` en el plan bloquea todos los matches, aunque
+  el `CTE Scan` candidato no sea el de la CTE recursiva. La
+  alternativa (intentar correlacionar `CTE Scan` con `Recursive
+  Union`) es frágil en planes anidados; el FN ocasional es
+  preferible al FP de recomendar `NOT MATERIALIZED` sobre una CTE
+  recursiva.
+- **CTEs DML.** Una CTE con `INSERT`/`UPDATE`/`DELETE` debe
+  materializarse. D12 no parsea el SQL del usuario, así que en
+  queries DML podría reportar FP. En AppDB v1 (queries de lectura
+  puras) no aplica; para producción el recomendador debe verificar
+  el SQL antes de emitir prosa.
+- **Planner con razón al materializar.** En algunos planes el
+  planner de Postgres 12+ elige materializar aunque solo haya una
+  referencia porque estima que el costo de recalcular la CTE en el
+  contexto del plan es mayor. El sandbox confirma antes de mostrar.
+
 ### `Recommendation` (frozen dataclass) — C2
 Salida del recomendador. Campos:
 - `kind: Literal["create_index", "analyze"]` — la acción sugerida.
@@ -382,13 +545,18 @@ motor/
 │   ├── __init__.py
 │   ├── _common.py                       # helpers compartidos C1/D16
 │   ├── seq_scan_on_large_table.py       # C1
-│   ├── missing_index.py                 # D16
-│   ├── partial_index_opportunity.py     # D17
-│   ├── cardinality_misestimate.py       # D18
 │   ├── like_leading_wildcard.py         # D4
 │   ├── function_in_where.py             # D5
 │   ├── or_across_tables.py              # D6
-│   └── correlated_subquery.py           # D7
+│   ├── correlated_subquery.py           # D7
+│   ├── nested_loop_large_outer.py       # D8
+│   ├── select_star.py                   # D9
+│   ├── missing_covering_index.py        # D10
+│   ├── type_mismatch.py                 # D11
+│   ├── unnecessary_cte_materialize.py   # D12
+│   ├── missing_index.py                 # D16
+│   ├── partial_index_opportunity.py     # D17
+│   └── cardinality_misestimate.py       # D18
 ├── recommender.py  # Recommendation + recommenders por detector (C2)
 └── CLAUDE.md       # este archivo
 ```

@@ -21,11 +21,20 @@ Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` par
 ## Estado actual del proyecto
 
 ### Cobertura de detección
-- **AppDB v1:** 11 / 20 queries detectadas (medido 2026-05-12 con
-  `scripts/measure_coverage.py`, suite C1+D4+D5+D6+D7+D16+D17+D18
-  contra AppDB real). Salto de 3/20 a 11/20 al aterrizar D16+D17+D18.
-  D16 disparó en 7 queries (Q01, Q02, Q06, Q08, Q09, Q15, Q16) — es
-  el detector con mayor ratio cobertura/costo del proyecto.
+- **AppDB v1:** **15 / 20** queries detectadas (medido 2026-05-12
+  post-merge de D16-D18 sobre D8-D12, con `scripts/measure_coverage.py`
+  corriendo los 13 detectores activos: C1+D4+D5+D6+D7+D8+D9+D10+D11+
+  D12+D16+D17+D18). Trayectoria del día: **0/20** (sólo C1) →
+  **3/20** (C1+D4-D7) → **11/20** (sumando D16-D18) → **15/20**
+  (uniendo con D8-D12 del compañero en el merge).
+- **Disparos por detector:** D16=7 (Q01, Q02, Q06, Q08, Q09, Q15,
+  Q16), **D9=4 (Q01, Q07, Q12, Q18)** — segundo con más cobertura,
+  D4/D5/D7/D12/D17/D18=1 c/u, D6/D8/D10/D11/C1=0.
+- **Queries aún huérfanas:** Q05 (sort spill), Q10 (stats obsoletas
+  en tags chica), Q17 (IN→EXISTS), Q19 (NOT IN — timeout en
+  ANALYZE), Q20 (count(*)). **Falta 1 sola query** para llegar al
+  objetivo rúbrica ≥16/20. D22 (count(*) → Q20) es el siguiente
+  paso natural.
 - **Falsos positivos:** triage abierto. Q02/Q15/Q16 son "TP extras"
   (D16 captura el síntoma del índice faltante incluso cuando el
   anti-pattern raíz es OR cross-column, recheck con alta filter
@@ -177,6 +186,127 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
   Para llegar a 16/20 hace falta uno más entre D11 (cast),
   D10 (índice cubriente Q18) y D12 (CTE Q14).
 
+#### D11 + D12 — dos detectores estructurales: type mismatch y CTE materializada
+- **Autor:** David Ramírez. Rama `feat/D11-D12-detectores`.
+- **Archivos:**
+  `motor/detectors/type_mismatch.py` (nuevo),
+  `motor/detectors/unnecessary_cte_materialize.py` (nuevo),
+  `motor/detectors/__init__.py`,
+  `motor/__init__.py`,
+  `tests/motor/detectors/test_type_mismatch.py` (nuevo),
+  `tests/motor/detectors/test_unnecessary_cte_materialize.py` (nuevo),
+  `motor/CLAUDE.md` (2 secciones nuevas en API pública + entrada en
+  "Estructura interna"),
+  `docs/patterns/README.md` (filas 12-13 del índice actualizadas a ✅),
+  `docs/patterns/type-mismatch.md` (nuevo),
+  `docs/patterns/unnecessary-cte-materialize.md` (nuevo).
+- **Notas:**
+  - **D11 (`type_mismatch`):** detecta el patrón `((col)::tipo = val)`
+    en el campo `node.filter` de nodos scan — Postgres emite esa
+    notación cuando aplica un cast implícito sobre la columna que
+    impide usar el índice btree existente. El detector solo dispara si
+    existe un índice btree (primera columna = col) en el snapshot; sin
+    índice el Seq Scan es inevitable y el pattern correcto es D16, no
+    D11. Sigue la firma extendida `(plan, snapshot, *, sql=None)`
+    documentada en D9 (reservado para validación futura del tipo
+    declarado en schema). Confianza 0.9. Usa regex
+    `r"\(\((\w+)\)::(\w+)"` sobre `node.filter` (campo emitido por
+    Postgres, no SQL crudo — permitido por R2).
+  - **D12 (`unnecessary_cte_materialize`):** detecta nodos `CTE Scan`
+    cuya `cte_name` aparece exactamente una vez en el plan y el plan no
+    contiene ningún `Recursive Union`. Cuando eso ocurre, la CTE podría
+    inlinearse con `WITH ... AS NOT MATERIALIZED` en Postgres 12+. Si
+    la CTE se referencia más de una vez, la materialización es útil (no
+    reporta). Si hay `Recursive Union` en cualquier lugar del plan, el
+    detector es conservador y no reporta nada (no puede distinguir cuál
+    CTE es la recursiva sin más contexto; evita FPs). Confianza 0.85.
+    Firma estándar `(plan, snapshot)`.
+  - Ambos registrados en `motor/detectors/__init__.py` y reexportados
+    desde `motor/__init__.py`.
+- **Tests:** ✅ 19 nuevos verde (11 D11 + 8 D12). Suite total de
+  detectores: 68/68.
+- **Cumplimiento de reglas:**
+  - R1 (motor decide): funciones puras, sin LLM.
+  - R2 (estructura, no SQL crudo): D11 opera sobre `node.filter`
+    generado por Postgres (no el SQL del usuario); D12 sobre atributos
+    tipados `node.cte_name` y búsqueda de `Recursive Union`.
+  - R9 (pureza): sin I/O, sin estado global.
+  - R10 (tests +/-): ambos tienen happy path + casos negativos +
+    frontera + robustez.
+  - R14 (sin hardcoded): cero literales de AppDB.
+  - R15: esta entrada + `motor/CLAUDE.md` + 2 archivos en
+    `docs/patterns/` actualizados en el mismo PR.
+
+#### D8 + D9 + D10 — tres detectores estructurales adicionales
+- **Autor:** Andrés Angulo. Rama `feat/D8-D9-D10-detectores`.
+- **Archivos:**
+  `motor/detectors/nested_loop_large_outer.py` (nuevo),
+  `motor/detectors/select_star.py` (nuevo),
+  `motor/detectors/missing_covering_index.py` (nuevo),
+  `motor/detectors/__init__.py`,
+  `motor/__init__.py`,
+  `tests/motor/detectors/test_nested_loop_large_outer.py` (nuevo),
+  `tests/motor/detectors/test_select_star.py` (nuevo),
+  `tests/motor/detectors/test_missing_covering_index.py` (nuevo),
+  `motor/CLAUDE.md` (3 secciones nuevas en API pública + entrada
+  en "Estructura interna"),
+  `docs/patterns/README.md` (filas 9-11 del índice flipped a ✅),
+  `docs/patterns/nested-loop-large-outer.md` (nuevo),
+  `docs/patterns/select-star.md` (nuevo),
+  `docs/patterns/missing-covering-index.md` (nuevo).
+- **Notas:** los tres siguen el contrato cuajado en C1
+  (`(plan, snapshot) -> Detection` con
+  `evidence={"matches": [...]}`), excepto **D9 que extiende la firma
+  con un keyword-only `sql: str | None = None`** (ver decisión más
+  abajo). Tres detectores en un solo bloque porque comparten
+  arquitectura estructural pura y porque dos de ellos (D8, D10) son
+  cortos; D9 trae la complejidad real (parser SQL + cruce con plan).
+  - **D8 (`nested_loop_large_outer`):** dispara cuando un nodo
+    `Nested Loop` tiene como hijo Outer un subárbol que emite ≥10k
+    filas. Resuelve el outer con `Parent Relationship == "Outer"` y
+    cae a "primer hijo" cuando Postgres no marca el campo. Prefiere
+    `actual_rows` (EXPLAIN ANALYZE) sobre `plan_rows`. Cada match
+    reporta tabla, tipo de nodo del outer, filas, fuente (actual o
+    plan) y join_type. Confianza 0.8. Umbral
+    `LARGE_OUTER_MIN_ROWS = 10_000` documentado en código.
+  - **D9 (`select_star`):** parsea el SQL sanitizado con `sqlglot`
+    (`dialect="postgres"`), recorre cada `Select` del AST y dispara
+    cuando la lista de proyección contiene `Star` (no calificado) o
+    `Column(this=Star)` (`tabla.*`). Para cada match añade
+    `index_only_candidate: bool` cruzando con el plan: True si hay
+    al menos un `Index Scan` en el árbol. Ante `sql=None` o SQL no
+    parseable, devuelve `found=False` sin levantar. Confianza 0.85.
+  - **D10 (`missing_covering_index`):** estructural puro. Dispara
+    una vez por cada `Index Scan` del plan (NO matchea `Index Only
+    Scan`) **que devuelva ≥ `INDEX_SCAN_MIN_ROWS = 50` filas** —
+    debajo del umbral el heap fetch ahorrado es despreciable y un
+    `INCLUDE` solo encarece el índice. Prefiere `actual_rows` sobre
+    `plan_rows` cuando EXPLAIN ANALYZE las trae (cubre el caso de
+    estimación inflada con real baja). Cada match incluye `table`,
+    `index_name`, `index_cond`, `indexed_columns` e
+    `include_columns` (poblados desde el snapshot cuando está
+    disponible; `None` si no). Confianza 0.7 (la más laxa del
+    catálogo — no todo Index Scan que pasa el umbral se beneficia
+    de cubriente, el recomendador debe ponderar). `Bitmap Heap
+    Scan` explícitamente fuera de scope.
+  - Registrados en `motor/detectors/__init__.py` y reexportados desde
+    `motor/__init__.py`.
+- **Tests:** ✅ 19 nuevos verde (5 D8 + 7 D9 + 7 D10 — los 7 de D10
+  incluyen los 2 del umbral `INDEX_SCAN_MIN_ROWS`). Suite total de
+  detectores: 49/49.
+- **Cumplimiento de reglas:**
+  - R1 (motor decide): los tres son funciones puras, sin LLM.
+  - R2 (estructura, no SQL crudo): D8 y D10 sobre atributos tipados
+    de `PlanNode`. D9 sobre AST de sqlglot — sigue siendo estructura,
+    no regex. Ninguno usa regex sobre el SQL crudo.
+  - R9 (pureza): sin I/O, sin estado global.
+  - R10 (tests +/-): los tres tienen happy path + casos negativos
+    + frontera (D8 con Hash Join, D9 sin SQL/SQL inválido, D10 con
+    Index Only Scan).
+  - R14 (sin hardcoded): cero literales de AppDB.
+  - R15: esta entrada + `motor/CLAUDE.md` + 3 archivos en
+    `docs/patterns/` actualizados en el mismo PR.
+
 ### Decisiones
 
 #### Refactor `_common.py` antes de aterrizar D16
@@ -255,6 +385,62 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
   D2 o D19 deberían cubrir, esos detectores siguen siendo
   necesarios para emitir la prosa correcta y mejorar la rúbrica
   cualitativa (Criterio 2.2).
+
+#### Firma extendida para D9: `(plan, snapshot, *, sql=None)`
+- **Autor:** Andrés Angulo
+- **Contexto:** `SELECT *` no es recuperable estructuralmente desde
+  el plan — Postgres ya resolvió la lista de proyección cuando
+  emite el EXPLAIN. Detectar `SELECT *` requiere obligatoriamente el
+  SQL del usuario.
+- **Alternativas:** (a) extender la firma estándar a
+  `(plan, snapshot, *, sql=None)` para D9 y futuros detectores que
+  lo necesiten; (b) leer el SQL desde `snapshot["query_sql"]`
+  inyectándolo por el conector; (c) duplicar el contrato y crear
+  una clase distinta de detectores "con SQL".
+- **Decisión:** (a). Keyword-only opcional, default `None`.
+- **Razón:** opción (b) acopla el conector a un campo que no le
+  pertenece (el conector saca metadata del schema, no del query
+  actual). Opción (c) explota la cantidad de contratos a documentar
+  y mantener. La (a) mantiene una sola convención: los detectores
+  estructurales puros se llaman con dos args, los que necesitan
+  contexto SQL aceptan un kwarg opcional. El orquestador
+  (`/backend`) decide qué pasar inspeccionando la firma.
+- **Trade-off:** cuando aterricen D11 (cast implícito) o cualquier
+  futuro detector con la misma necesidad, deben seguir el mismo
+  patrón keyword-only. Documentado en `motor/CLAUDE.md` bajo la
+  sección de D9.
+
+#### D10 confianza 0.7 + umbral `INDEX_SCAN_MIN_ROWS = 50`
+- **Autor:** Andrés Angulo
+- **Contexto:** D10 dispara una vez por cada `Index Scan` del plan,
+  pero no todo Index Scan se beneficia de un cubriente. La señal
+  estructural es débil: "hay heap fetch posible" no implica "es
+  una mala situación". La primera versión emitida (sin umbral)
+  generaba demasiados FPs en lookups por PK y filtros muy
+  selectivos donde el heap fetch ya es despreciable.
+- **Alternativas:** (a) confianza alta (0.9), reportando como
+  oportunidad fuerte; (b) confianza media (0.7-0.8), reportando
+  como sugerencia que el recomendador debe ponderar; (c) no emitir
+  D10 sin cruce SQL (extender firma como D9); (d) añadir un umbral
+  de filas para descartar los FPs estructurales obvios.
+- **Decisión:** (b) + (d). Confianza 0.7, umbral
+  `INDEX_SCAN_MIN_ROWS = 50` filas (prefiere `actual_rows` sobre
+  `plan_rows` cuando EXPLAIN ANALYZE las trae).
+- **Razón:** (a) genera ruido. (c) duplica complejidad cuando el
+  recomendador, no el detector, es quien debe filtrar con info del
+  SQL. (d) corta de un golpe el caso más obvio sin acoplarse al SQL.
+  La combinación (b)+(d) elimina el ~80% de los FPs estructurales y
+  deja la decisión final al recomendador (que cruza con el SQL
+  sanitizado y, eventualmente, sandbox).
+- **Trade-off:** D10 sigue siendo el detector con confianza más
+  baja del catálogo. El umbral 50 es heurístico (no medido contra
+  AppDB todavía); si la medición empírica futura sugiere otro
+  número, se ajusta el constante. La elección entre `actual_rows`
+  y `plan_rows` también es importante: una estimación inflada
+  (`plan_rows=5000`) con realidad baja (`actual_rows=3`) no debe
+  disparar — por eso priorizamos `actual_rows` cuando está.
+
+---
 
 #### D4 + D5 + D6 + D7 — cuatro detectores estructurales de anti-patterns
 - **Autor:** Diego Enderman (commit `bb0d97d`, PR #27, mergeado `9f184c1`).

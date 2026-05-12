@@ -93,6 +93,125 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### C10 + C11 — tarjetas de detección/recomendación y comparativo before/after en frontend
+- **Autor:** Alexander
+- **Archivos:** `frontend/src/App.jsx`, `frontend/src/App.css`,
+  `frontend/src/DetectionCard.jsx` (nuevo),
+  `frontend/src/RecommendationCard.jsx` (nuevo),
+  `frontend/src/PlanComparison.jsx` (nuevo),
+  `frontend/src/Card.css` (nuevo), `frontend/CLAUDE.md`,
+  `backend/orchestrator.py`, `backend/CLAUDE.md`,
+  `tests/backend/test_orchestrator.py`, `PROGRESS.md`.
+  Rama `feat/C10-C11-tarjetas-y-comparativo`.
+- **Notas:** los dos tickets viajan juntos porque C11 depende
+  estructuralmente del payload extendido por el backend para mostrar
+  el comparativo, y la tarjeta de C10 es donde C11 se monta visualmente.
+  - **C10 (`DetectionCard.jsx` + `RecommendationCard.jsx` + `Card.css`):**
+    el panel lateral deja de imprimir `JSON.stringify` y renderea
+    tarjetas. La tarjeta de detección muestra título humanizado del
+    tipo de pattern, confianza del motor (porcentaje) y la lista de
+    `evidence.matches[]` con tablas/columnas afectadas. La tarjeta de
+    recomendación muestra título, badges de origen (LLM vs plantilla)
+    y de `sandbox_verdict` (validated/discarded/skipped/sin sandbox),
+    la prosa de `explanation.text`, un `<details>` colapsable con
+    justificación + impacto + selectividad, y dos bloques de SQL
+    copiables: `create_index_sql` y `explanation.suggested_rewrite`
+    (si el LLM la propuso). Botón "Copiar SQL" usa
+    `navigator.clipboard` con fallback silencioso (servir por http
+    sin foco puede rechazar el permiso). Estilo VS Code oscuro
+    consistente con la decisión "sin Tailwind" del 2026-05-10.
+  - **C11 (`PlanComparison.jsx` + backend `sandbox_plan_comparison`):**
+    se agrega `sandbox_plan_comparison` al payload de cada
+    recomendación con `{node_type_before, node_type_after,
+    cost_before, cost_after}` extraído del `ValidationResult` que ya
+    producía C3. El componente renderea dos paneles lado a lado:
+    "Antes" (borde rojo, Seq Scan) y "Después" (borde verde si el
+    nodo cambió a Index/Bitmap, gris si se mantuvo). Si ambos costos
+    son positivos calcula y muestra "Xx mejora estimada en sandbox"
+    junto con la advertencia textual de que los costos del sandbox
+    son sobre tablas vacías por R6 y la magnitud real depende de
+    stats de producción. Cuando `sandbox_plan_comparison` viene
+    `null` (sandbox apagado, o veredicto
+    `skipped_no_sandbox_signal` típico de ANALYZE) la tarjeta muestra
+    un mensaje neutral en lugar del panel — no rompe layout ni
+    miente.
+  - **Cambios en backend:** `backend/orchestrator.py` añade el helper
+    `_plan_comparison_or_none(v)` que empaqueta los cuatro campos
+    del `ValidationResult` o devuelve `None` cuando no hay datos
+    comparables (`v is None` o `node_type_before/after` ambos `None`).
+    No cambia el shape de respuesta existente: es un campo nuevo,
+    opcional, que el frontend consume si está y el resto del contrato
+    queda intacto (cero breaking para B14 ni para los consumidores
+    actuales del payload).
+- **Tests:** ✅ Verde. Suite completa **248 passed, 1 skipped** tras
+  los cambios. Se actualizaron tres tests del orchestrator para
+  cubrir el nuevo campo: (a) sin sandbox →
+  `sandbox_plan_comparison=None`, (b) sandbox que valida →
+  comparativo con los cuatro campos llenos, (c) caso nuevo
+  `test_analyze_query_sandbox_skipped_no_signal_no_emite_comparison`
+  que verifica que un veredicto `skipped_no_sandbox_signal`
+  (recomendación tipo ANALYZE) emite `sandbox_plan_comparison=None`
+  para no engañar a la UI. El build de Vite del frontend pasa
+  (`npm run build` → 44 módulos transformados, 0 warnings).
+- **Pendiente vigilar:** la integración real (frontend en
+  `localhost:5173` + backend en `localhost:8000` + AppDB + sandbox
+  reales) sólo se ha probado con build estático y unit tests. C12
+  (prueba integral en las 5 máquinas) sigue pendiente y validará el
+  flujo end-to-end. Una vez aterrice D16 (missing-index) habrá que
+  re-verificar que las tarjetas no rompen layout con múltiples
+  recomendaciones por análisis.
+
+### Decisiones
+
+#### `sandbox_plan_comparison` como campo separado de `sandbox_reason`
+- **Autor:** Alexander
+- **Contexto:** `ValidationResult` ya transportaba `node_type_before/
+  after` y `cost_before/after`, pero el orquestador sólo exponía la
+  prosa de `reason` y el `verdict` al frontend. Para C11 hace falta
+  acceso estructurado a los cuatro datos para poder renderear
+  paneles y calcular el factor de mejora.
+- **Alternativas:** (a) parsear `sandbox_reason` con regex en el
+  frontend (frágil, acoplado a strings del backend), (b) ampliar
+  cada campo individual al top-level del recommendation
+  (`node_type_before`, `cost_before`, etc.) — contamina el namespace,
+  (c) agrupar los cuatro bajo `sandbox_plan_comparison`.
+- **Decisión:** (c). El frontend recibe un sub-objeto del que puede
+  preguntar `comparison !== null` y desestructurar de forma estable.
+- **Razón:** mantiene el payload limpio, el frontend desacoplado de
+  la prosa, y el contrato fácil de evolucionar (si añadimos
+  `total_buffers_before/after` en el futuro, se suma al sub-objeto
+  sin contaminar el resto).
+- **Trade-off:** dos accesos en lugar de uno
+  (`rec.sandbox_verdict` + `rec.sandbox_plan_comparison`).
+  Aceptable: representan dos cosas conceptualmente distintas
+  (veredicto cualitativo vs. datos cuantitativos del plan).
+
+#### Honestidad sobre el "Xx mejora" en C11
+- **Autor:** Alexander
+- **Contexto:** la rúbrica pide "antes 45,231 → después 287 (158x
+  mejora)". El sandbox monta tablas vacías por R6, así que los
+  costos absolutos colapsan a magnitudes que no representan
+  producción. Mostrar "158x" sin contexto sería engañoso para el
+  Demo Day.
+- **Alternativas:** (a) ocultar el factor numérico cuando los costos
+  son sospechosos (umbrales), (b) mostrar el factor con disclaimer
+  explícito, (c) calcular el factor desde el plan real de AppDB
+  EXPLAIN ANALYZE en lugar del sandbox.
+- **Decisión:** (b). El componente `PlanComparison` muestra el
+  factor seguido de "estimado en sandbox (costos sobre tablas
+  vacías — la magnitud real depende de stats de producción)". Sin
+  costos válidos, degrada a "cambio cualitativo positivo: el
+  planner pasa de escaneo secuencial a uso de índice".
+- **Razón:** la rúbrica valora honestidad técnica; mostrar números
+  sin contexto contradice la regla #1 del proyecto (el motor decide
+  y valida — no engaña). (c) requería volver a invocar el motor con
+  el índice aplicado en AppDB, lo cual no es seguro (mutación) y
+  fuera del alcance de C11.
+- **Trade-off:** el "wow factor" del número grande se atenúa con la
+  nota, pero la verosimilitud técnica frente a un evaluador (o
+  cliente real) sube. El cambio cualitativo (Seq Scan → Index Scan)
+  sigue siendo la señal honesta y se resalta con borde verde.
+
 #### D1 — Catálogo de anti-patterns documentado (esqueleto + primer pattern)
 - **Autor:** Andrés Angulo
 - **Archivos:** `docs/patterns/README.md` (sobrescrito desde

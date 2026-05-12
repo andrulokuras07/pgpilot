@@ -12,6 +12,8 @@ FastAPI que orquesta los módulos del proyecto y expone los endpoints que consum
 - ✅ C8 — logs estructurados (vive en `ia/logs.py`; el backend genera
   un `request_id` por petición y lo propaga para correlación)
 - ✅ C9 — `/analyze` orquesta la pipeline real (parser + C1 + C2 + C3 + C4-C7)
+- ✅ C11 — `/analyze` añade `sandbox_plan_comparison` por recomendación
+  (datos del `ValidationResult` que el frontend usa para el before/after)
 - ⬜ E3 — endpoint `/workload`
 
 ---
@@ -98,6 +100,12 @@ responde 422 si falta o está vacío.
       "selectivity": 0.002,
       "sandbox_verdict": "validated",          // null si no hay sandbox
       "sandbox_reason": "Index Scan ...",      // null si no hay sandbox
+      "sandbox_plan_comparison": {             // null si no hay sandbox o
+        "node_type_before": "Seq Scan",        //   si la validación fue
+        "node_type_after": "Index Scan",       //   "skipped_no_sandbox_signal"
+        "cost_before": 12345.0,                //   (ej. recomendación
+        "cost_after": 42.0                     //   tipo ANALYZE)
+      },
       "explanation": {
         "text": "PgPilot detectó un Seq Scan ...",
         "suggested_rewrite": null,             // o un SQL alternativo del LLM
@@ -113,7 +121,10 @@ El frontend (B14/C10) consume `recommendations[].explanation.text` para
 la tarjeta y `recommendations[].create_index_sql` para el botón "copiar
 SQL". `sandbox_verdict` controla la insignia "validado en sandbox".
 `explanation.source` decide si mostrar la etiqueta "explicación
-generada sin IA".
+generada sin IA". `sandbox_plan_comparison` alimenta el panel
+before/after de C11; cuando viene `null` (sandbox apagado o
+`verdict="skipped_no_sandbox_signal"` por recomendación tipo ANALYZE),
+la tarjeta muestra un mensaje neutral en lugar del comparativo.
 
 **Códigos de error:**
 

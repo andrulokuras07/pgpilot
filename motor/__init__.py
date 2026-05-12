@@ -7,10 +7,13 @@ desde aquí.
 
 from motor.detection import Detection
 from motor.detectors import (
+    detect_cardinality_misestimate,
     detect_correlated_subquery,
     detect_function_in_where,
     detect_like_leading_wildcard,
+    detect_missing_index,
     detect_or_across_tables,
+    detect_partial_index_opportunity,
     detect_seq_scan_on_large_table,
 )
 from motor.nodes import KNOWN_NODE_TYPES, find_nodes
@@ -29,6 +32,9 @@ __all__ = [
     "detect_function_in_where",
     "detect_or_across_tables",
     "detect_correlated_subquery",
+    "detect_missing_index",
+    "detect_partial_index_opportunity",
+    "detect_cardinality_misestimate",
     "Recommendation",
     "recommend_for_seq_scan_on_large_table",
 ]

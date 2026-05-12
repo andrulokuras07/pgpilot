@@ -175,6 +175,100 @@ con `subplan_name`). Confianza 0.95.
   `subplan_name`; si el SubPlan cuelga de un join, devuelve la
   primera relación interna que encuentra recorriendo hijos.
 
+### `detect_nested_loop_large_outer(plan, snapshot) -> Detection`
+Detector D8. Dispara cuando un nodo `Nested Loop` tiene como hijo
+externo (Outer) un subárbol que emite >10k filas. Postgres ejecuta
+el lado interno una vez por cada fila del externo, así que un Nested
+Loop con outer grande casi siempre debería ser `Hash Join` o
+`Merge Join`. El detector resuelve qué hijo es el outer con
+`Parent Relationship == "Outer"`; si no está marcado (Postgres no
+siempre lo emite), toma el primer hijo por convención. Usa
+`actual_rows` cuando EXPLAIN ANALYZE las trae, si no `plan_rows`.
+Cada match incluye `outer_table`, `outer_node_type`, `outer_rows`,
+`outer_rows_source` (`"actual"` o `"plan"`), `join_type`. Confianza
+0.8.
+
+**Umbral:** `LARGE_OUTER_MIN_ROWS = 10_000`. Por debajo de eso,
+Nested Loop suele ser óptimo y disparar sería FP.
+
+**Limitaciones conocidas:**
+- No mide cuántas veces se ejecuta el inner ni el costo real de
+  cada loop. Reporta presencia, no impacto. La cuantificación va al
+  recomendador (cruzando con snapshot y, eventualmente, sandbox).
+- Reporta `outer_table` como la primera relación que encuentra
+  recorriendo hijos. En joins anidados puede no ser intuitivo;
+  útil para la prosa, no parte del criterio de detección.
+
+### `detect_select_star(plan, snapshot, *, sql=None) -> Detection`
+Detector D9. **Único detector del módulo con firma extendida**:
+acepta `sql: str | None` como keyword-only opcional. Sin SQL no hay
+forma estructural de detectar `SELECT *` (Postgres ya resolvió la
+lista de proyección antes de generar el EXPLAIN), así que cuando
+`sql is None` el detector devuelve `Detection(found=False)` en lugar
+de levantar.
+
+Parsea el SQL con `sqlglot.parse_one(sql, dialect="postgres")`,
+recorre todos los nodos `Select` del árbol, y dispara cuando la
+lista de proyección contiene un `Star` (no calificado o `tabla.*`).
+Para cada match añade `index_only_candidate: bool` cruzando con el
+plan: True si hay al menos un `Index Scan` en el árbol (oportunidad
+de pasar a `Index Only Scan` con índice cubriente). Cada match
+incluye `table`, `index_only_candidate`, `from_text`. Confianza 0.85.
+
+**Robustez:** ante SQL no parseable (`sqlglot.errors.ParseError`)
+devuelve `found=False` silenciosamente.
+
+**Convención de firma extendida:** el orquestador (`/backend`)
+detecta esta firma vía inspección de parámetros y pasa `sql=`
+explícitamente solo a los detectores que lo aceptan. Si en el
+futuro otro detector necesita la query (D11 con cast implícito,
+por ejemplo), debe seguir el mismo patrón keyword-only para no
+romper la firma estándar de los detectores estructurales.
+
+**Limitaciones conocidas:**
+- **No reporta qué columnas se usan realmente.** Determinar eso
+  requiere análisis de WHERE/JOIN/ORDER y queda en el recomendador.
+  D9 solo señala la oportunidad estructural.
+- **Detecta `SELECT *` en cada subquery por separado.** Una outer
+  con columnas explícitas y una inner con `*` dispara un match (la
+  inner es el problema).
+- **No distingue `SELECT *` justificado** (e.g.
+  `INSERT INTO t SELECT * FROM staging`) de no justificado. El
+  recomendador y el LLM deben moderar la prosa en esos contextos.
+
+### `detect_missing_covering_index(plan, snapshot) -> Detection`
+Detector D10. Estructural puro. Dispara una vez por cada `Index Scan`
+en el plan (NO matchea `Index Only Scan`, que ya resuelve sin heap
+fetch) **que devuelva ≥ `INDEX_SCAN_MIN_ROWS = 50` filas**. Cada
+`Index Scan` implica un heap fetch por fila devuelta: si todas las
+columnas que la query necesita cupieran en el índice (via `INCLUDE`
+o columnas extra del índice), el plan pasaría a `Index Only Scan`.
+La lista exacta de columnas a incluir la decide el recomendador
+(cruzando con el SQL sanitizado); D10 solo reporta la oportunidad y
+enriquece el match con metadata del índice existente desde el
+snapshot. Cada match incluye `table`, `index_name`, `index_cond`,
+`indexed_columns`, `include_columns`. Confianza 0.7.
+
+**Umbral de filas:** `INDEX_SCAN_MIN_ROWS = 50`. Un `Index Scan` que
+devuelve <50 filas (lookup por PK, filtros muy selectivos) casi
+nunca se beneficia de un cubriente: el heap fetch ahorrado es
+despreciable y el `INCLUDE` solo encarece el índice. Filtrar aquí
+elimina la mayoría de FPs estructurales obvios. El detector prefiere
+`actual_rows` sobre `plan_rows` cuando EXPLAIN ANALYZE las trae.
+
+**Limitaciones conocidas:**
+- **Confianza 0.7 — más laxa del catálogo.** Por encima del umbral,
+  no todo `Index Scan` se beneficia: si las columnas extra son
+  enormes (`text`), el `INCLUDE` cuesta más de lo que ahorra. El
+  recomendador (con sandbox) debe filtrar el caso antes de emitir
+  prosa enfática.
+- **No reporta `Heap Fetches` numéricos.** Postgres no expone ese
+  contador en `Index Scan` (solo en `Index Only Scan` con visibility
+  map). El detector se conforma con la señal estructural.
+- **No detecta `Bitmap Heap Scan` como candidato.** Bitmap con
+  muchas filas también podría beneficiarse, pero la decisión es
+  más compleja y queda fuera de scope.
+
 ### `Recommendation` (frozen dataclass) — C2
 Salida del recomendador. Campos:
 - `kind: Literal["create_index", "analyze"]` — la acción sugerida.
@@ -310,7 +404,10 @@ motor/
 │   ├── like_leading_wildcard.py     # D4
 │   ├── function_in_where.py         # D5
 │   ├── or_across_tables.py          # D6
-│   └── correlated_subquery.py       # D7
+│   ├── correlated_subquery.py       # D7
+│   ├── nested_loop_large_outer.py   # D8
+│   ├── select_star.py               # D9
+│   └── missing_covering_index.py    # D10
 ├── recommender.py  # Recommendation + recommenders por detector (C2)
 └── CLAUDE.md       # este archivo
 ```

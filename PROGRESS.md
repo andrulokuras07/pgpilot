@@ -93,6 +93,44 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### D1 — Catálogo de anti-patterns documentado (esqueleto + primer pattern)
+- **Autor:** Andrés Angulo
+- **Archivos:** `docs/patterns/README.md` (sobrescrito desde
+  placeholder), `docs/patterns/seq-scan-on-large-table.md` (nuevo).
+  Rama `docs/D1-catalogo-patterns`.
+- **Notas:** Cumple el "hecho cuando" del backlog D1: el archivo
+  índice existe con la plantilla y el primer pattern (Seq Scan sobre
+  tabla grande con índice disponible — detector C1) está documentado
+  completo en su propio archivo, siguiendo la convención del
+  `CLAUDE.md` raíz ("uno por archivo .md").
+  - **`docs/patterns/README.md`:** índice tabular con las 19
+    entradas del catálogo (1 ✅ implementada, 18 ⬜ Backlog mapeadas
+    a sus respectivos códigos C/D), convención de nombres de archivo
+    (kebab-case alineado con `motor/detectors/`), plantilla
+    obligatoria con 9 secciones (Problema, Cómo aparece en el plan,
+    Regla de detección, Recomendación, Validación, Falsos positivos,
+    Ejemplo de query, Ejemplo de plan, Tests, Referencias) y notas
+    para agentes que documenten un pattern nuevo (incluye R15
+    espiritual: si la regla cambia en código, actualizar el `.md` en
+    el mismo PR).
+  - **`docs/patterns/seq-scan-on-large-table.md`:** primer pattern
+    documentado completo. Refleja fielmente el comportamiento real de
+    `motor/detectors/seq_scan_on_large_table.py` (umbral 100k filas,
+    índice btree con primera columna == columna del filtro,
+    convención `evidence={"matches": [...]}`). Frontera con D16
+    declarada explícita (C1 nunca emite `create_index`). Limitaciones
+    D1/D2 documentadas en línea con las del `motor/CLAUDE.md`,
+    incluyendo el FN de Q15 capturado por la medición empírica del
+    día. Ejemplo de plan basado en EXPLAIN sintético (no copiado de
+    fixture) para que sea autocontenido.
+- **Tests:** N/A (D1 es documentación, no código). Suite del
+  proyecto sigue 202/202 verde.
+- **Pendiente vigilar (R15 espiritual):** cuando aterricen D2..D22 y
+  D16, cada autor debe (a) crear su `.md` en `docs/patterns/` desde
+  la plantilla, (b) marcar la fila correspondiente en el índice como
+  ✅ Implementado y apuntar al archivo. Si esto se incumple, el
+  catálogo se desincroniza del producto.
+
 #### C8 + C9 — logs estructurados de LLM y endpoint /analyze conectado al motor real
 - **Autor:** Alexander
 - **Archivos:** `ia/logs.py` (nuevo), `ia/explain.py`, `ia/__init__.py`,

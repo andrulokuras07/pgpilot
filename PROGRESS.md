@@ -21,8 +21,12 @@ Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` par
 ## Estado actual del proyecto
 
 ### Cobertura de detección
-- **AppDB v1:** 1 / 20 queries detectadas (C1; objetivo: ≥16)
-- **Falsos positivos:** sin medir todavía (objetivo: <3)
+- **AppDB v1:** 0 / 20 queries detectadas (C1 contra AppDB real;
+  medido 2026-05-11 con `scripts/measure_c1_coverage.py`). C1 sólo
+  ataca "índice presente pero planner Seq Scan", caso que no
+  ocurre naturalmente en AppDB v1. Faltan detectores hermanos.
+- **Falsos positivos:** 0 medidos (C1 no disparó nada; el detector
+  es conservador por diseño).
 - **AppDB v2:** sin probar (objetivo: ≥4 de 5 queries nuevas)
 
 ### Hitos
@@ -88,6 +92,84 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ## 2026-05-11
 
 ### Avances
+
+#### Medición empírica de cobertura del detector C1 contra AppDB v1
+- **Autor:** Andrés
+- **Archivos:** `scripts/measure_c1_coverage.py` (nuevo), `PROGRESS.md`.
+- **Notas:** script que corre `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`
+  contra una variante representativa de cada query plantada Q01..Q20
+  en AppDB, parsea con `motor.parse_explain`, llama
+  `detect_seq_scan_on_large_table` + `recommend_for_seq_scan_on_large_table`,
+  y compara contra un triage manual de "objetivos legítimos de C1"
+  derivado de `01_schema.sql` + `HALLAZGOS_v1.md` + lectura del
+  detector. **Triage a priori:** 3 queries marcadas como target
+  (Q07, Q11, Q15 — todas sobre `posts.created_at` o
+  `notifications.user_id` donde existe índice y un Seq Scan podría
+  aparecer). **Resultado empírico:** **0/20 detectadas. 0 TP, 0 FP,
+  3 FN (Q07, Q11, Q15), 16 TN, 1 ERROR (Q19 timeout 5s — esperado,
+  NOT IN sin transformar es muy lento sobre 500K filas).**
+- **Tests:** ✅ El script se ejecuta limpio contra AppDB + sandbox
+  arriba; no se agregan tests automatizados porque es instrumentación
+  exploratoria (no API de producto). Si en el futuro se quiere correr
+  en CI, agregar marker `integration` y fixtures de plan estables.
+
+### Decisiones
+
+#### Por qué C1 detectó 0/20 y qué hacer al respecto
+- **Autor:** Andrés (basado en la medición de hoy)
+- **Contexto:** la rúbrica exige ≥16/20 queries detectadas. C1
+  detectó 0/20 contra AppDB v1 real. Hace tres horas el supuesto era
+  que C1 cubría al menos los "Seq Scan sobre tabla grande" plantados
+  (Q01, Q06, Q08, Q18). La medición lo desmiente.
+- **Diagnóstico (no es bug de C1, es scope):**
+  - **C1 exige índice presente** (línea 100-105 de
+    `motor/detectors/seq_scan_on_large_table.py`: "C1 = índice existe
+    y se ignora. Índice falta lo cubre C2"). Las queries plantadas
+    sobre `posts.author_id` (Q01, Q02, Q06, Q08, Q09) NO tienen
+    índice — son casos de "índice faltante", no de "índice ignorado".
+    C1 las descarta correctamente.
+  - Las 3 queries donde sí existe el índice apuntable (Q07, Q11
+    sobre `posts.created_at` y `notifications.user_id`) el planner
+    las resuelve con **`Bitmap Heap Scan`**, no con `Seq Scan`. No
+    hay anti-pattern que detectar; C1 no dispara, correcto.
+  - Q15 tiene un Seq Scan paralelo adentro de un `Gather`, pero el
+    filter es `((likes_count > 950) AND (created_at > ...))`. El
+    regex `_FILTER_COLUMN_RE` extrae la PRIMERA columna del filtro
+    (`likes_count`, sin índice) y descarta el match — esto es la
+    limitación **D2** ya documentada en `motor/CLAUDE.md` líneas
+    78-84. C1 está siendo conservador por diseño, no fallando.
+- **Alternativas:**
+  - (a) Ampliar C1 para cubrir "índice falta" (rompe la frontera
+    explícita con C2 y mezcla dos diagnósticos diferentes).
+  - (b) **Escribir un detector hermano `D-missing-index`** que dispare
+    cuando hay Seq Scan + tabla ≥100k + columna del filtro **SIN**
+    índice. Reuso 80% del código de C1, sólo invierte el predicado
+    `has_index`. Cubre Q01, Q06, Q08, Q09 (4 queries) en ~2-3 h.
+  - (c) Conformarse con C1 y pasar directo a C8/C9 con cobertura
+    medida en 0/20.
+- **Decisión:** (b) más una cadena de detectores baratos. Plan
+  priorizado por ratio de cobertura/costo:
+  1. **D-missing-index** (4 queries, ~2-3 h) — máximo impacto.
+  2. **D-no-where-large-sort** (Q18: Sort sobre tabla grande sin idx
+     en sort key, ~2 h).
+  3. **D-multi-col-filter** o arreglo de D2 con sqlglot (Q15, ~3-4 h).
+  4. **D-count-star-large** (Q20, ~1 h).
+  5. **D-having-as-where** (Q16, ~2 h).
+  Con C1 + estos 5 ≈ 7-8 queries detectadas. Para alcanzar 16/20 hay
+  que cubrir además Q03 (LIKE wildcard), Q04 (EXTRACT), Q14 (CTE
+  materializada), Q12 (cast), Q10 (stats obsoletas — requiere
+  cruzar `rows_estimated` vs `rows_actual`).
+- **Razón:** la frontera "índice falta vs índice ignorado" es
+  conceptualmente correcta y útil al usuario (diferentes
+  recomendaciones: `CREATE INDEX` vs `ANALYZE`). Romperla por
+  conveniencia oscurece la explicación al usuario.
+- **Trade-off:** vamos a Demo Day con cobertura realista del orden
+  de 7-10/20 si el equipo alcanza a escribir 5-6 detectores en lo
+  que queda. La narrativa del pitch debe acomodarse: "cobertura
+  selectiva con foco en anti-patterns de alto impacto + arquitectura
+  extensible para sumar detectores en una tarde". Hay que ajustar
+  la diapositiva de "Cobertura" del Demo Day cuando el número final
+  esté medido — no inventarlo en vivo.
 
 #### C5 + C6 + C7 — validación Pydantic, validación cruzada y modo plantilla
 - **Autor:** David

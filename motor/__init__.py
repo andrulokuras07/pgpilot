@@ -15,6 +15,8 @@ from motor.detectors import (
     detect_or_across_tables,
     detect_select_star,
     detect_seq_scan_on_large_table,
+    detect_type_mismatch,
+    detect_unnecessary_cte_materialize,
 )
 from motor.nodes import KNOWN_NODE_TYPES, find_nodes
 from motor.parser import ExplainResult, PlanNode, parse_explain
@@ -35,6 +37,8 @@ __all__ = [
     "detect_nested_loop_large_outer",
     "detect_select_star",
     "detect_missing_covering_index",
+    "detect_type_mismatch",
+    "detect_unnecessary_cte_materialize",
     "Recommendation",
     "recommend_for_seq_scan_on_large_table",
 ]

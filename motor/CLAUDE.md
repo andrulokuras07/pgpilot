@@ -269,6 +269,75 @@ elimina la mayoría de FPs estructurales obvios. El detector prefiere
   muchas filas también podría beneficiarse, pero la decisión es
   más compleja y queda fuera de scope.
 
+### `detect_type_mismatch(plan, snapshot, *, sql=None) -> Detection`
+Detector D11. Dispara cuando un nodo scan (`Seq Scan`, `Bitmap Heap
+Scan`, `Bitmap Index Scan`) tiene en `node.filter` el patrón
+`((col)::tipo = valor)` — notación de Postgres para un cast sobre la
+columna. Un cast sobre la columna impide usar el índice btree sobre
+esa columna: el planner no puede evaluarlo sin transformar cada
+entrada del índice. El detector adicionalmente verifica que existe
+un índice btree (primera columna = `col`) en el snapshot; sin índice,
+el Seq Scan es inevitable y el pattern correcto es D16. Cada match
+incluye `table`, `column`, `cast_type`, `filter`, `node_type`,
+`index_name`. Confianza 0.9.
+
+**Firma extendida:** acepta `sql: str | None = None` como
+keyword-only, siguiendo el patrón de D9 (`detect_select_star`).
+Hoy el parámetro no se usa; reservado para validación futura del
+tipo declarado en el schema contra el tipo del cast. Los detectores
+que necesiten el SQL del usuario deben seguir este mismo patrón.
+
+**Regex interno:** `_CAST_ON_COLUMN_RE = r"\(\((\w+)\)::(\w+)"`.
+Opera sobre el campo `node.filter` emitido por Postgres (estable en
+PG 12-16). Permitido por R2: el campo es generado por Postgres, no es
+el SQL crudo del usuario.
+
+**Limitaciones conocidas:**
+- **Formatos alternativos de cast.** `CAST(col AS tipo)` (forma
+  estándar SQL) y `col::tipo` sin dobles paréntesis no matchean el
+  regex. En EXPLAIN de Postgres 12-16 el formato `((col)::tipo` es
+  el estándar; si una versión futura cambia la representación, el
+  detector deja de funcionar silenciosamente (FN, no crash).
+- **Cast sobre expresión compuesta.** `((a + b)::integer = 5)` no
+  matchea porque `a + b` no es `\w+`. Falso negativo voluntario.
+- **Sin filtro de tamaño de tabla.** Un cast en una tabla de 50 filas
+  dispara con la misma confianza que en una de 10M. El recomendador
+  debe moderar la prosa para tablas pequeñas.
+
+### `detect_unnecessary_cte_materialize(plan, snapshot) -> Detection`
+Detector D12. Dispara cuando el plan contiene nodos `CTE Scan` cuya
+`cte_name` aparece exactamente una vez y el plan no tiene ningún
+nodo `Recursive Union`. Cuando una CTE no recursiva se referencia
+una sola vez, materializarla como tabla temporal interna (el
+comportamiento por defecto hasta Postgres 11) es innecesario en
+Postgres 12+: el planner puede inlinar la CTE y optimizar la query
+entera. La recomendación es añadir `NOT MATERIALIZED` a la cláusula
+WITH. Si la misma `cte_name` aparece en dos nodos `CTE Scan`, la
+materialización es útil (evita recalcular); no se reporta. Si hay
+un `Recursive Union` en cualquier lugar del plan, el detector es
+conservador y no reporta ninguna CTE (no podemos distinguir cuál
+nodo corresponde a la CTE recursiva sin contexto adicional). Cada
+match incluye `cte_name`, `reference_count`, `node_type`,
+`plan_rows`. Confianza 0.85.
+
+**Limitaciones conocidas:**
+- **Heurístico conservador ante `Recursive Union`.** Cualquier
+  `Recursive Union` en el plan bloquea todos los matches, aunque
+  el `CTE Scan` candidato no sea el de la CTE recursiva. La
+  alternativa (intentar correlacionar `CTE Scan` con `Recursive
+  Union`) es frágil en planes anidados; el FN ocasional es
+  preferible al FP de recomendar `NOT MATERIALIZED` sobre una CTE
+  recursiva.
+- **CTEs DML.** Una CTE con `INSERT`/`UPDATE`/`DELETE` debe
+  materializarse. D12 no parsea el SQL del usuario, así que en
+  queries DML podría reportar FP. En AppDB v1 (queries de lectura
+  puras) no aplica; para producción el recomendador debe verificar
+  el SQL antes de emitir prosa.
+- **Planner con razón al materializar.** En algunos planes el
+  planner de Postgres 12+ elige materializar aunque solo haya una
+  referencia porque estima que el costo de recalcular la CTE en el
+  contexto del plan es mayor. El sandbox confirma antes de mostrar.
+
 ### `Recommendation` (frozen dataclass) — C2
 Salida del recomendador. Campos:
 - `kind: Literal["create_index", "analyze"]` — la acción sugerida.
@@ -407,7 +476,9 @@ motor/
 │   ├── correlated_subquery.py       # D7
 │   ├── nested_loop_large_outer.py   # D8
 │   ├── select_star.py               # D9
-│   └── missing_covering_index.py    # D10
+│   ├── missing_covering_index.py    # D10
+│   ├── type_mismatch.py             # D11
+│   └── unnecessary_cte_materialize.py  # D12
 ├── recommender.py  # Recommendation + recommenders por detector (C2)
 └── CLAUDE.md       # este archivo
 ```

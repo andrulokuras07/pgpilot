@@ -36,6 +36,8 @@ from motor import (
     detect_cardinality_misestimate,
     detect_correlated_subquery,
     detect_function_in_where,
+    detect_having_without_aggregate,
+    detect_in_subquery_to_exists,
     detect_like_leading_wildcard,
     detect_missing_covering_index,
     detect_missing_index,
@@ -66,6 +68,8 @@ DETECTORS: tuple[tuple[str, Callable[..., Detection]], ...] = (
     ("D16", detect_missing_index),
     ("D17", detect_partial_index_opportunity),
     ("D18", detect_cardinality_misestimate),
+    ("D19", detect_having_without_aggregate),
+    ("D20", detect_in_subquery_to_exists),
 )
 
 
@@ -206,7 +210,7 @@ PLANTED: tuple[PlantedQuery, ...] = (
         "Q16",
         "HAVING que debería ser WHERE",
         "SELECT author_id, count(*) FROM posts GROUP BY author_id HAVING author_id = 1000",
-        expected_covered=True,  # D16
+        expected_covered=True,  # D16 + D19
     ),
     PlantedQuery(
         "Q17",
@@ -216,8 +220,7 @@ PLANTED: tuple[PlantedQuery, ...] = (
             "SELECT author_id FROM posts WHERE created_at > NOW() - INTERVAL '7 days'"
             ")"
         ),
-        expected_covered=False,
-        pending_detector="D20 (IN→EXISTS — pendiente)",
+        expected_covered=True,  # D20
     ),
     PlantedQuery(
         "Q18",
@@ -337,7 +340,8 @@ def test_coverage_per_query(planted: PlantedQuery, coverage_results) -> None:
 
 
 def test_coverage_total_matches_expected(coverage_results) -> None:
-    """Hoy 15/20 deben quedar cubiertas (medición empírica 2026-05-12)."""
+    """Cobertura medida debe coincidir con el número de queries marcadas
+    `expected_covered=True` en PLANTED (17/20 con D19+D20 añadidos)."""
     covered = sum(1 for r in coverage_results.values() if r["covered"])
     expected = sum(1 for q in PLANTED if q.expected_covered)
     assert covered == expected, (

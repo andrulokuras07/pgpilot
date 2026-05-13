@@ -98,6 +98,68 @@ específicas para D22.
 SELECT count(*) FROM posts;
 ```
 
+## Ejemplo de plan
+
+Con paralelismo (forma típica sobre tablas grandes en AppDB v1):
+
+```json
+{
+  "Plan": {
+    "Node Type": "Aggregate",
+    "Strategy": "Plain",
+    "Partial Mode": "Finalize",
+    "Plan Rows": 1,
+    "Plan Width": 8,
+    "Plans": [
+      {
+        "Node Type": "Gather",
+        "Workers Planned": 2,
+        "Plans": [
+          {
+            "Node Type": "Aggregate",
+            "Strategy": "Plain",
+            "Partial Mode": "Partial",
+            "Plans": [
+              {
+                "Node Type": "Seq Scan",
+                "Parallel Aware": true,
+                "Relation Name": "posts",
+                "Plan Rows": 250000,
+                "Plan Width": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Lo que D22 evalúa:
+
+- Raíz `Aggregate` con `Strategy="Plain"` y sin `Group Key` ✓
+- `find_nodes(root, join_types)` está vacío (no hay joins) ✓
+- Hay un único `Seq Scan` sobre `posts`, sin `Filter`/`Index Cond`/
+  `Recheck Cond` ✓
+- `sizes["public.posts"].estimated_rows >= 100_000` ✓
+- ⇒ `Detection(found=True, confidence=0.95, evidence={"matches": [{table: "public.posts", estimated_rows: 500000, scan_node_type: "Seq Scan", suggested_alternatives: (...)}]})`
+
+## Validación
+
+- **Sandbox:** la alternativa `pg_class.reltuples` es trivialmente
+  equivalente en costo (lookup O(1) sobre catálogo); el sandbox puede
+  comparar costo del plan original vs. una query trivial sobre
+  `pg_class` para confirmar el orden de magnitud. Para la alternativa
+  "tabla materializada de contadores", la validación natural es
+  comparar `EXPLAIN` original con `EXPLAIN` del lookup directo sobre
+  la tabla de contadores.
+- **LLM (`/ia/cross_validator.py`):** la prosa explicativa se valida
+  contra el snapshot — la tabla mencionada en la recomendación debe
+  existir; el `pg_class.reltuples` sugerido solo se muestra si la
+  alternativa cubre `count(*)` (no `sum`, `avg`, etc., donde la
+  prosa debe moderarse).
+
 ## Tests
 
 `tests/motor/detectors/test_count_star_full_table.py`:

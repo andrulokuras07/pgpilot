@@ -108,6 +108,33 @@ trivaluado) y habilita Anti Join para performance. El
 `suggested_rewrite` en `evidence` es SQL completo y parseable con
 sqlglot.
 
+## Validación
+
+- **Sandbox:** correr `EXPLAIN ANALYZE` de la query original
+  (`NOT IN`) y del rewrite (`NOT EXISTS`) sobre el schema temporal.
+  El rewrite se valida si:
+  1. El `Execution Time` baja (típico: el planner puede usar Anti
+     Join sobre `NOT EXISTS`, lo cual era imposible con `NOT IN` sobre
+     columna nullable).
+  2. La forma estructural del plan cambia: el `SubPlan`/`hashed SubPlan`
+     desaparece y aparece un `Anti Join` (Hash o Nested Loop).
+  Si el plan no muestra el cambio estructural, la validación falla y
+  se reporta — la recomendación se conserva como prosa explicativa
+  pero no se ofrece como acción ejecutable.
+- **LLM (`/ia/cross_validator.py`):** valida que la tabla y la columna
+  del `NOT EXISTS` existan en el snapshot. La correlación del rewrite
+  (`t.col = outer.col`) se chequea: si el LLM rompe la correlación
+  proponiendo un EXISTS no correlacionado, la sugerencia se descarta
+  porque cambia la semántica.
+- **Nota crítica de R3 + R4:** D21 detecta un **bug semántico real**,
+  no solo un problema de performance. La validación con sandbox debe
+  además ejecutar la query original y la reescrita sobre un par de
+  datos sintéticos que incluyan al menos un NULL en la columna interna
+  para confirmar que los resultados son distintos (el original devuelve
+  vacío, el rewrite devuelve filas). Esta verificación queda como
+  trabajo de C3 cuando el sandbox aterrice datos sintéticos para
+  validar semántica además de costo.
+
 ## Falsos positivos conocidos
 
 - **Si el dueño del schema sabe que la subquery nunca devuelve NULL en

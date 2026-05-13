@@ -114,6 +114,16 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+## 2026-05-13
+
+### Avances
+
+#### F10 — User persona detallado
+- **Autor:** Regina Valenzuela
+- **Archivos:** `business/persona.md` (nuevo, F10 — user persona completo)
+- **Notas:** Persona "Andrés Villanueva", Tech Lead Backend 31 años en fintech B2B de 45 personas en Monterrey, equipo de 8 devs, 3 BDs Postgres en producción (~180 GB principal), sin DBA dedicado. Documento incluye: contexto y un día típico, 5 pain points específicos con citas representativas, tabla de herramientas actuales con limitaciones, criterios de compra en orden de prioridad, señales de alerta (qué lo haría NO comprar), relación con el pricing (Pro lo compra solo; Team requiere al CTO). El bloqueador principal — no poder pegar queries reales en herramientas externas por datos sensibles de nómina — conecta directamente con los diferenciadores R6/R7 de sanitización. Perfil secundario (Staff Engineer en empresa 50-200 devs y CTO fundador en empresa 5-15 devs) documentado al final para cubrir variaciones del ICP. No requiere `.docx` (es documento de proceso; se integrará en F15 como sección del documento consolidado).
+- **Tests:** N/A (documentación de negocio, sin código).
+
 #### F2 — Documento de arquitectura en `/docs/arquitectura.md`
 - **Autor:** Regina Valenzuela. Rama `docs/F2-arquitectura`.
 - **Archivos:**

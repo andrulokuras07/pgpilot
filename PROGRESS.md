@@ -105,7 +105,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
-## 2026-05-12 (segunda entrada)
+## 2026-05-12 
 
 ### Avances
 
@@ -156,11 +156,6 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 - **Tests:** ✅ **198 passed** (22 nuevos D19/D20 + 176 suite motor existente,
   sin regresiones). Tests de integración (D14/D15) requieren AppDB.
 
----
-
-## 2026-05-12
-
-### Avances
 
 
 #### D2 + D3 — Detectores de stats obsoletas y sort en disco

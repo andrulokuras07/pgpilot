@@ -16,6 +16,10 @@ FastAPI que orquesta los módulos del proyecto y expone los endpoints que consum
   (datos del `ValidationResult` que el frontend usa para el before/after)
 - ✅ E3 — endpoint `POST /workload` (recibe CSV/JSON, devuelve top 10)
 - ✅ E5 — cleanup de schemas zombies del sandbox al startup
+- ✅ E7 — `sandbox_plan_comparison` enriquecido: añade `plan_rows_before`/
+  `plan_rows_after` (filas estimadas por el planner antes/después) al
+  sub-objeto, para el comparativo enriquecido + resumen ejecutivo del
+  frontend
 
 ---
 
@@ -105,7 +109,9 @@ responde 422 si falta o está vacío.
         "node_type_before": "Seq Scan",        //   si la validación fue
         "node_type_after": "Index Scan",       //   "skipped_no_sandbox_signal"
         "cost_before": 12345.0,                //   (ej. recomendación
-        "cost_after": 42.0                     //   tipo ANALYZE)
+        "cost_after": 42.0,                    //   tipo ANALYZE)
+        "plan_rows_before": 500000,            // E7: filas estimadas por
+        "plan_rows_after": 2500                //   el planner antes/después
       },
       "explanation": {
         "text": "PgPilot detectó un Seq Scan ...",
@@ -123,9 +129,15 @@ la tarjeta y `recommendations[].create_index_sql` para el botón "copiar
 SQL". `sandbox_verdict` controla la insignia "validado en sandbox".
 `explanation.source` decide si mostrar la etiqueta "explicación
 generada sin IA". `sandbox_plan_comparison` alimenta el panel
-before/after de C11; cuando viene `null` (sandbox apagado o
-`verdict="skipped_no_sandbox_signal"` por recomendación tipo ANALYZE),
-la tarjeta muestra un mensaje neutral en lugar del comparativo.
+before/after de C11+E7: lleva `node_type_before/after`, `cost_before/
+after` y `plan_rows_before/after` (filas estimadas por el planner) por
+corrida; el frontend deriva de ahí el titular de transición de tipo de
+nodo y el resumen ejecutivo automático ("redujo el costo estimado de X
+a Y — Zx mejora estimada en sandbox"). No incluye tiempos: el EXPLAIN
+del sandbox corre sin `ANALYZE` (tablas vacías por R6). Cuando viene
+`null` (sandbox apagado o `verdict="skipped_no_sandbox_signal"` por
+recomendación tipo ANALYZE), la tarjeta muestra un mensaje neutral en
+lugar del comparativo.
 
 **Códigos de error:**
 

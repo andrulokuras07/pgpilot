@@ -1,5 +1,5 @@
-/* Tarjetas C10 + comparativo C11. Tema VS Code oscuro consistente con
- * App.css. Sin Tailwind (PROGRESS.md 2026-05-10).
+/* Tarjetas C10 + comparativo C11/E7. Tema VS Code oscuro consistente
+ * con App.css. Sin Tailwind (PROGRESS.md 2026-05-10).
  */
 
 .cards-list {
@@ -269,7 +269,7 @@
   cursor: not-allowed;
 }
 
-/* --- Comparativo C11 --------------------------------------------- */
+/* --- Comparativo C11 + E7 ---------------------------------------- */
 
 .plan-comparison {
   background: #1e1e1e;
@@ -304,6 +304,31 @@
   letter-spacing: 0.6px;
   color: #858585;
   font-weight: 600;
+}
+
+.comparison-transition {
+  font-size: 12px;
+  color: #d4d4d4;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.comparison-transition code {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-family: "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 11.5px;
+  color: #ce9178;
+}
+
+.comparison-transition-better {
+  color: #4ec9b0;
+}
+
+.comparison-transition-better code {
+  color: #d4d4d4;
 }
 
 .verdict-badge {
@@ -372,12 +397,12 @@
   font-weight: 600;
 }
 
-.comparison-cost {
+.comparison-metric {
   font-size: 11.5px;
   color: #9a9a9a;
 }
 
-.comparison-cost strong {
+.comparison-metric strong {
   color: #d4d4d4;
   font-family: "Menlo", "Monaco", "Consolas", monospace;
 }
@@ -396,8 +421,17 @@
   color: #c4e3f8;
   margin: 0;
   line-height: 1.45;
+  border-top: 1px dashed #2d2d30;
+  padding-top: 8px;
 }
 
 .comparison-summary strong {
   color: #4ec9b0;
+}
+
+.comparison-summary .comparison-summary-lead {
+  color: #9cdcfe;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
 }

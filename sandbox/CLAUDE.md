@@ -121,6 +121,15 @@ método) sin pretender más de lo que el sandbox vacío puede afirmar.
 - `cost_before`, `cost_after: float | None` — `total_cost` del nodo
   de scan. Útiles para logs y para que C4 pueda mencionarlos al LLM;
   **no se usan para decidir el veredicto** (ver razón arriba).
+- `plan_rows_before`, `plan_rows_after: int | None` — `plan_rows` del
+  nodo de scan (filas estimadas por el planner) en cada corrida (E7).
+  Alimentan el comparativo enriquecido del frontend; **tampoco
+  participan en el veredicto**. Default `None`: `None` cuando la query
+  no tocó la tabla, en el short-circuit de `kind="analyze"`, o si un
+  EXPLAIN no devolvió plan. **No hay campos de tiempo:** el EXPLAIN del
+  sandbox corre sin `ANALYZE` (tablas vacías por R6 → un `EXPLAIN
+  ANALYZE` no daría tiempos comparables a producción), así que no hay
+  tiempo real que reportar.
 
 ### `verdict_from_plans(plan_before, plan_after, table_key) -> ValidationResult`
 Función pura. Permite testear la lógica de veredicto sin levantar el

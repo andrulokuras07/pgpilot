@@ -27,7 +27,9 @@ from sandbox import (
 # --- helpers para construir planes sintéticos ----------------------
 
 
-def _plan_with_scan(node_type: str, relation: str, total_cost: float = 100.0) -> Any:
+def _plan_with_scan(
+    node_type: str, relation: str, total_cost: float = 100.0, plan_rows: int = 1
+) -> Any:
     """Construye un plan EXPLAIN sintético con un solo nodo de scan
     sobre la relación indicada. Suficiente para ejercer la lógica de
     veredicto sin tener que correr Postgres."""
@@ -38,7 +40,7 @@ def _plan_with_scan(node_type: str, relation: str, total_cost: float = 100.0) ->
                 "Relation Name": relation,
                 "Startup Cost": 0.0,
                 "Total Cost": total_cost,
-                "Plan Rows": 1,
+                "Plan Rows": plan_rows,
                 "Plan Width": 1,
             }
         }
@@ -51,8 +53,8 @@ def _plan_with_scan(node_type: str, relation: str, total_cost: float = 100.0) ->
 def test_verdict_validated_cuando_seq_scan_pasa_a_index_scan() -> None:
     """Caso feliz: el planner cambió de Seq Scan a Index Scan tras crear
     el índice. La recomendación se valida."""
-    before = _plan_with_scan("Seq Scan", "posts", total_cost=1000.0)
-    after = _plan_with_scan("Index Scan", "posts", total_cost=10.0)
+    before = _plan_with_scan("Seq Scan", "posts", total_cost=1000.0, plan_rows=50_000)
+    after = _plan_with_scan("Index Scan", "posts", total_cost=10.0, plan_rows=49_000)
 
     result = verdict_from_plans(before, after, "public.posts")
 
@@ -61,7 +63,24 @@ def test_verdict_validated_cuando_seq_scan_pasa_a_index_scan() -> None:
     assert result.node_type_after == "Index Scan"
     assert result.cost_before == 1000.0
     assert result.cost_after == 10.0
+    assert result.plan_rows_before == 50_000
+    assert result.plan_rows_after == 49_000
     assert "Index Scan" in result.reason
+
+
+def test_verdict_reporta_filas_estimadas_de_ambos_planes() -> None:
+    """E7: el comparativo enriquecido necesita las filas estimadas por el
+    planner antes y después. `verdict_from_plans` las extrae del
+    `plan_rows` del nodo de scan en cada corrida (incluso cuando el tipo
+    de nodo final no es `Index Scan` sino otro de la familia Bitmap)."""
+    before = _plan_with_scan("Seq Scan", "posts", total_cost=8000.0, plan_rows=120_000)
+    after = _plan_with_scan("Bitmap Heap Scan", "posts", total_cost=900.0, plan_rows=118_500)
+
+    result = verdict_from_plans(before, after, "public.posts")
+
+    assert result.verdict == "validated"
+    assert result.plan_rows_before == 120_000
+    assert result.plan_rows_after == 118_500
 
 
 def test_verdict_validated_para_bitmap_heap_scan() -> None:
@@ -98,6 +117,8 @@ def test_verdict_discarded_cuando_query_no_toca_la_tabla() -> None:
     assert result.verdict == "discarded"
     assert result.node_type_before is None
     assert result.node_type_after is None
+    assert result.plan_rows_before is None
+    assert result.plan_rows_after is None
 
 
 def test_verdict_discarded_si_cambio_a_tipo_inesperado() -> None:

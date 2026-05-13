@@ -225,6 +225,69 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### E7 — Comparativo before/after enriquecido
+- **Autor:** (pendiente de asignar al hacer commit). Rama
+  `feat/E7-comparativo-enriquecido`.
+- **Archivos:**
+  `sandbox/validator.py` (`ValidationResult` gana `plan_rows_before`/
+  `plan_rows_after`; `verdict_from_plans` los puebla desde el `plan_rows`
+  del nodo de scan en cada corrida),
+  `backend/orchestrator.py` (`_plan_comparison_or_none` añade las filas
+  estimadas al sub-objeto `sandbox_plan_comparison`),
+  `frontend/src/PlanComparison.jsx` (reescrito: titular de transición de
+  tipo de nodo, filas estimadas por panel, resumen ejecutivo automático),
+  `frontend/src/Card.css` (`.comparison-transition`, `.comparison-metric`
+  reemplaza a `.comparison-cost`, `.comparison-summary-lead`, borde
+  superior en el resumen),
+  `tests/sandbox/test_validator.py` (`_plan_with_scan` acepta `plan_rows`;
+  asserts de filas en el veredicto validado + test nuevo
+  `test_verdict_reporta_filas_estimadas_de_ambos_planes`; assert de
+  `plan_rows_*=None` cuando la query no toca la tabla),
+  `tests/backend/test_orchestrator.py` (el `fake_validate` de C11 ahora
+  setea `plan_rows_*` y el test verifica las nuevas claves del
+  comparativo),
+  `sandbox/CLAUDE.md`, `backend/CLAUDE.md`, `frontend/CLAUDE.md`
+  (contrato del comparativo enriquecido), `PROGRESS.md` (esta entrada).
+- **Notas:** E7 amplía C11. Antes el comparativo del sandbox solo
+  llevaba tipo de nodo y `total_cost`; ahora también las filas estimadas
+  por el planner (`plan_rows`) antes/después, el frontend muestra un
+  titular con la transición de tipo de nodo (`Seq Scan` → `Index Scan`)
+  y un resumen ejecutivo automático ("redujo el costo estimado de X a Y
+  — Zx mejora estimada en sandbox …"). El "hecho cuando" del backlog
+  ("las recomendaciones validadas muestran el comparativo enriquecido")
+  queda cubierto: una recomendación con `sandbox_verdict="validated"`
+  renderea el titular de transición + dos paneles con cost y filas + el
+  resumen ejecutivo. Cuando no hay factor numérico fiable (costos no
+  positivos) degrada a la frase cualitativa "el planner deja el escaneo
+  secuencial y pasa a usar el índice".
+  - **Por qué filas y no tiempo:** el EXPLAIN del sandbox corre sin
+    `ANALYZE` (las tablas están vacías por R6, así que un `EXPLAIN
+    ANALYZE` no produciría tiempos comparables a producción). El
+    `plan_rows` sí existe siempre y es honesto mostrarlo — y enseña que
+    el índice cambia *cómo* se llega a las filas, no *cuántas*. No se
+    agregó plumbing de tiempo que sería siempre `None`.
+  - **Honestidad del "Zx mejora":** se mantiene el disclaimer ya
+    introducido en C11 (costos sobre tablas vacías; la magnitud real
+    depende de stats de producción). La señal honesta sigue siendo el
+    cambio de tipo de nodo, resaltado con borde verde.
+- **Cumplimiento de reglas:**
+  - R3: el comparativo solo refleja lo que el sandbox midió; ningún
+    dato lo decide el LLM.
+  - R6: nada cambia respecto al sandbox vacío; solo se reporta más de
+    lo que ya se medía.
+  - R8: type hints completos (`plan_rows_before/after: int | None`).
+  - R12: `PlanComparison` sigue siendo componente funcional con hooks
+    (de hecho no usa estado); subcomponentes `ComparisonPane`,
+    `ExecutiveSummary` también funcionales.
+  - R15: esta entrada + `sandbox/CLAUDE.md` + `backend/CLAUDE.md` +
+    `frontend/CLAUDE.md` en el mismo PR.
+- **Tests:** ⚠️ No corridos en esta máquina (sin venv ni `pytest`/
+  dependencias instaladas). Cambios verificados con `python -m
+  py_compile` (OK) y revisión manual. El siguiente que tenga el entorno
+  debe correr `pytest tests/sandbox/test_validator.py
+  tests/backend/test_orchestrator.py` (+ build del frontend) antes de
+  mergear.
+
 #### E1+E2+E3+E4+E5+E6 — Workload Analysis + Sandbox hardening
 - **Autor:** Diego. Rama `feat/E1-E6-workload-sandbox`.
 - **Archivos:**
@@ -257,6 +320,50 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
   — cada operación tiene 5s hard limit vía Postgres nativo.
 - **Tests:** ✅ Verde (17 tests nuevos). 3 tests pre-existentes fallan en
   main (D19/D20), no relacionados con estos cambios.
+
+### Decisiones
+
+#### E7: el comparativo muestra filas estimadas, no tiempo
+- **Autor:** (E7)
+- **Contexto:** el backlog de E7 lista "filas estimadas antes vs
+  después, costo, tiempo si se midió" para el comparativo enriquecido.
+  El sandbox monta tablas vacías por R6 y el EXPLAIN se corre sin
+  `ANALYZE`, así que no hay tiempo medido nunca.
+- **Alternativas consideradas:** (a) plumbing `total_time_before/after`
+  desde `node.actual_total_time` aunque hoy sea siempre `None` (campo
+  muerto, render condicional); (b) no agregar el campo y documentar por
+  qué; (c) cambiar C3 a `EXPLAIN ANALYZE` para tener tiempos.
+- **Decisión:** (b). Se agregan `plan_rows_before/after` (siempre
+  presentes, dato honesto) y se documenta en `ValidationResult`, en el
+  orquestador y en `PlanComparison.jsx` que no se muestra tiempo porque
+  el sandbox no lo mide.
+- **Razón:** (a) viola "no diseñar para requisitos hipotéticos"; (c)
+  cambia el contrato de C3 sin ganancia (un `ANALYZE` sobre tablas
+  vacías sigue sin representar producción — solo sumaría latencia y
+  riesgo). El `plan_rows` enseña algo real: el índice cambia el método
+  de acceso, no la cardinalidad estimada del filtro.
+- **Trade-offs:** el comparativo no tiene la columna "tiempo" que un
+  lector literal de la rúbrica podría buscar. Mitigado: la prosa del
+  resumen ejecutivo y los disclaimers explican por qué (consistente con
+  la regla #1 — honestidad sobre wow-factor).
+
+#### E7: el resumen ejecutivo se genera en el frontend
+- **Autor:** (E7)
+- **Contexto:** "Resumen ejecutivo automático: 'redujo costo estimado
+  de X a Y (Zx mejora)'". Podría componerse en el backend
+  (`sandbox_plan_comparison.executive_summary: str`) o en el frontend.
+- **Decisión:** en el frontend (`PlanComparison.jsx`), igual que la
+  frase "Xx mejora" que ya generaba C11. El backend mantiene
+  `sandbox_plan_comparison` como objeto de datos puro
+  (`node_type_*`, `cost_*`, `plan_rows_*`).
+- **Razón:** consistencia con el diseño existente de C11; el factor de
+  mejora y la prosa son derivables determinísticamente de los datos
+  estructurados, así que no hay valor en serializar el string desde el
+  backend. Si en el futuro otra UI consume el endpoint, deriva su
+  propia prosa de los mismos campos.
+- **Trade-offs:** la prosa del resumen vive en dos sitios potenciales
+  si algún día hay otro cliente; aceptable — el contrato de datos es
+  estable y el cómputo es trivial.
 
 ---
 

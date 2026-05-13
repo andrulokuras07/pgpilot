@@ -109,6 +109,83 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-14 (Demo Day — bugs detectados en pruebas end-to-end con LLM real)
+
+### Avances
+
+#### fix — bugs descubiertos en pruebas end-to-end LLM + sandbox + AppDB
+- **Autor:** David Ramírez. Rama `fix/demo-day-bugs-llm-sandbox-validations`.
+- **Archivos:**
+  - `ia/cross_validator.py` — renombré el parámetro `sanitized_sql` →
+    `original_sql` en `cross_validate()` y `_sandbox_verdict()`; actualicé
+    docstrings; el sandbox ahora recibe la SQL ejecutable, no la
+    sanitizada.
+  - `ia/explain.py` — nuevo parámetro `original_sql` en
+    `explain_recommendation()` (defaultea a `restore(sanitized_query)` si
+    no se pasa); helpers `_restore_placeholders_in_text` y
+    `_restore_placeholders_in_explanation` aplicados antes de devolver la
+    prosa al backend.
+  - `ia/llm.py` — `.strip()` defensivo en la resolución de
+    `ANTHROPIC_API_KEY` (tolerancia a CRLF en `.env` de Windows).
+  - `ia/logs.py` — `.strip()` defensivo en `PGPILOT_LLM_LOG_PATH` (misma
+    razón).
+  - `backend/orchestrator.py` — `_safe_explain` propaga `original_sql` al
+    orquestador de IA; `_check_schema_ok` hace fallback con prefijo
+    `public.` cuando el snapshot indexa por `<schema>.<tabla>` pero el
+    finding trae solo el nombre simple.
+  - `backend/CLAUDE.md` — nota operacional sobre
+    `python-multipart`; lectura del bug 5.
+  - `ia/CLAUDE.md` — documenta (a) que el sandbox recibe SQL original y
+    (b) la restauración unidireccional de placeholders al usuario final.
+  - Tests nuevos:
+    - `tests/ia/test_cross_validator_sandbox_no_placeholders.py` —
+      monkeypatch al sandbox + assert "no `$LITERAL` en la query".
+    - `tests/ia/test_explain_orchestrator.py` —
+      `test_explain_recommendation_restaura_placeholders_en_prosa_llm`
+      verifica que la prosa al usuario reemplaza placeholders.
+    - `tests/backend/test_orchestrator.py` —
+      `test_compute_validations_schema_ok_acepta_finding_sin_prefijo_public`.
+    - `tests/ia/test_llm.py` —
+      `test_call_llm_strip_crlf_de_ANTHROPIC_API_KEY`.
+    - `tests/integration/test_analyze_llm_with_sandbox.py` — integración
+      real `integration + llm`; verifica `partial=False`,
+      `explanation.source="llm"` y `sandbox_verdict="validated"` en Q01.
+- **Notas:** Los 5 bugs reportados, severidad y archivo afectado:
+  - **Bug 1 (crítica):** `ia/cross_validator.py` pasaba `sanitized.sql`
+    al sandbox (`SELECT ... WHERE author_id = $LITERAL_2_1`), Postgres
+    rechazaba con SyntaxError; el endpoint devolvía `partial=true,
+    errors=[{stage:"explain",...}], explanation.source="template"`. La
+    sanitización es solo para R4 (hacia el LLM); el sandbox es infra
+    local y SÍ debe recibir SQL ejecutable.
+  - **Bug 2 (UX):** la prosa que el LLM generaba mencionaba
+    `$LITERAL_2_1` en lugar del valor original que escribió el usuario.
+    Se aplica `_restore_placeholders_in_explanation` al final de
+    `explain_recommendation` antes de devolver al backend. Los logs C8
+    siguen guardando la versión sanitizada (B11 sigue verde).
+  - **Bug 3 (cosmética):** `_check_schema_ok` no encontraba la tabla
+    `"posts"` en el snapshot indexado por `"public.posts"`, así que los
+    findings se pintaban en rojo aunque la tabla sí existiera. Fallback
+    de 3 líneas resuelve sin tocar detectores.
+  - **Bug 4 (media):** `ANTHROPIC_API_KEY` con CRLF (típico de `.env` en
+    Windows) generaba `LocalProtocolError: Illegal header value
+    b'sk-ant-...\r'`. `.strip()` en `call_llm` y en `resolve_log_path`.
+  - **Bug 5 (operacional):** `python-multipart` está pineado en
+    `requirements.txt` pero un venv viejo no lo tiene; agregué nota en
+    `backend/CLAUDE.md` recordando reinstalar deps antes de levantar
+    `/workload`.
+- **Tests:** ✅ unit suite verde en Windows (402 passed; 2 failures
+  pre-existentes que solo aplican en POSIX — chmod y grep en
+  `tests/ia/test_logs.py::test_log_llm_interaction_oserror_*` y
+  `tests/ia/test_privacidad.py`, verificados también rojos en `main`).
+  En WSL/Linux con AppDB + sandbox la suite completa debe quedar en
+  ≥478 passed. Black + isort aplicados.
+- **Reglas vivas honradas:** R1 (motor sigue decidiendo), R3 (todo lo
+  del LLM se valida), R4 (sanitización al LLM intacta), R5 (LLM apagado
+  sigue funcionando), R15 (PROGRESS + `ia/CLAUDE.md` + `backend/CLAUDE.md`
+  en el mismo push), R17 (push a rama + PR — no merge propio).
+
+---
+
 ## 2026-05-13 (E13 — documentación del sandbox)
 
 ### Avances

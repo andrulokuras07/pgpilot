@@ -204,6 +204,51 @@ def test_call_llm_happy_path_simulado(monkeypatch: pytest.MonkeyPatch) -> None:
     assert parsed["confidence"] == 0.85
 
 
+# --- Bug 4: tolerancia a CRLF en ANTHROPIC_API_KEY -----------------
+
+
+def test_call_llm_strip_crlf_de_ANTHROPIC_API_KEY(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**Bug 4** — `.env` editado en Windows queda con line endings CRLF; el
+    `\\r` final se pega al valor de `ANTHROPIC_API_KEY`. `httpx` rechaza el
+    header con `LocalProtocolError: Illegal header value b'sk-ant-...\\r'`.
+
+    El fix: `call_llm` aplica `.strip()` antes de armar el header. Este test
+    verifica que la key que llega al `x-api-key` no contiene `\\r` ni `\\n`.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-with-crlf\r\n")
+    monkeypatch.delenv("LLM_ENABLED", raising=False)
+
+    captured: dict[str, Any] = {}
+
+    def fake_post(*args: Any, **kwargs: Any) -> httpx.Response:
+        captured["headers"] = kwargs.get("headers", {})
+        return httpx.Response(
+            200,
+            json={
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "explanation": "ok",
+                                "suggested_rewrite": None,
+                                "confidence": 0.9,
+                            }
+                        ),
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    call_llm(_prompt())
+
+    api_key_header = captured["headers"]["x-api-key"]
+    assert "\r" not in api_key_header
+    assert "\n" not in api_key_header
+    assert api_key_header == "sk-test-with-crlf"
+
+
 # --- integration con LLM real (hecho-cuando de C4) -----------------
 
 

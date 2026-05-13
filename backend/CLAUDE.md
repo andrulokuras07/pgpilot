@@ -66,6 +66,14 @@ El backend queda en `http://localhost:8000`. Healthcheck rápido:
 curl http://localhost:8000/health
 ```
 
+> **Nota operacional:** si tu venv tiene un par de semanas, corre
+> `pip install -r requirements.txt` antes de levantar el backend. E3
+> introdujo `python-multipart>=0.0.9,<1` como dependencia obligatoria
+> para `/workload` (FastAPI lo necesita para parsear `multipart/form-data`).
+> Sin él, el endpoint truena al primer upload con
+> `RuntimeError: Form data requires "python-multipart"`. Está pineado
+> en `requirements.txt`; basta con re-instalar.
+
 **Variables de entorno reconocidas:**
 
 - `APPDB_HOST/PORT/DB/USER/PASSWORD` — pool a la BD del cliente.

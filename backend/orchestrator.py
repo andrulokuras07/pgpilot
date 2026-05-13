@@ -318,6 +318,7 @@ def analyze_query(
             plan=plan,
             rec=rec,
             sanitized=sanitized,
+            original_sql=query,
             snapshot=snapshot,
             sandbox_pool=sandbox_pool,
             request_id=request_id,
@@ -674,6 +675,7 @@ def _safe_explain(
     plan: ExplainResult,
     rec: Any,
     sanitized: SanitizedQuery | None,
+    original_sql: str,
     snapshot: dict[str, Any],
     sandbox_pool: ConnectionPool | None,
     request_id: str | None,
@@ -703,6 +705,7 @@ def _safe_explain(
                 snapshot=snapshot,
                 sandbox_pool=sandbox_pool,
                 request_id=request_id,
+                original_sql=original_sql,
             )
         except Exception as exc:  # noqa: BLE001 — E8
             _record(errors, "explain", exc)
@@ -784,11 +787,21 @@ def _check_schema_ok(rec: dict[str, Any], snapshot: dict[str, Any]) -> bool | No
 
     ``None`` si la recomendación no apunta a una tabla concreta (caso
     teórico — los detectores actuales siempre la traen).
+
+    Las recomendaciones formales (C1/D16/D17/D18) emiten ``table`` con
+    prefijo de schema (``"public.posts"``), pero los findings de los
+    detectores sin recomendador formal a veces guardan solo el nombre
+    simple (``"posts"``). Hacemos lookup directo y, si falla y el nombre
+    no trae punto, reintentamos asumiendo schema ``public`` — match con
+    cómo `_split_table_key` del sandbox resuelve la falta de schema.
     """
     table = rec.get("table") or ""
     if not table:
         return None
-    table_meta = snapshot.get("schema", {}).get(table)
+    schema_index = snapshot.get("schema", {})
+    table_meta = schema_index.get(table)
+    if table_meta is None and "." not in table:
+        table_meta = schema_index.get(f"public.{table}")
     if table_meta is None:
         return False
     column = rec.get("column") or ""

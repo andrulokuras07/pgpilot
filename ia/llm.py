@@ -76,7 +76,11 @@ def call_llm(
             "LLM_ENABLED=false. El producto debe operar con plantillas locales (R5)."
         )
 
-    resolved_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+    # `.strip()` defiende contra `.env` editados en Windows: el CRLF deja un
+    # `\r` pegado al final del valor y httpx levanta
+    # `LocalProtocolError: Illegal header value b'sk-ant-...\r'`. Aplica al
+    # valor explícito y al de entorno por igual.
+    resolved_key = (api_key or os.getenv("ANTHROPIC_API_KEY") or "").strip()
     if not resolved_key:
         raise LLMDisabledError(
             "Falta ANTHROPIC_API_KEY en el entorno. El producto debe operar con "

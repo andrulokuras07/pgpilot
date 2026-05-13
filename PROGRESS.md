@@ -109,7 +109,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
-## 2026-05-14 (F17 — catálogo de patterns final)
+## 2026-05-13 (F17 — catálogo de patterns final)
 
 ### Avances
 
@@ -164,7 +164,16 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
   - **Normalización cosmética:** dos patterns (D19, D20) usaban el
     título `## Ejemplo de plan afectado` mientras el resto usa
     `## Ejemplo de plan`. Normalizados al título canónico para que
-    el catálogo lea uniforme.
+    el catálogo lea uniforme. **Polish posterior (mismo día):** en
+    `count-star-full-table.md` se renombró `## Recomendaciones` →
+    `## Recomendación` y `## Falsos positivos / negativos conocidos`
+    → `## Falsos positivos conocidos` (alineación con la plantilla del
+    README). En `not-in-nullable-subquery.md` se extrajo el JSON del
+    plan de Q19 de `## Cómo aparece en el plan` a una sección dedicada
+    `## Ejemplo de plan`, dejando la prosa explicativa "D21 no usa el
+    plan" en su sección original. Resultado: los 19 patterns tienen
+    ahora `## Ejemplo de plan` como sección dedicada, y los 19 títulos
+    del catálogo son canónicos.
   - **Cross-link con detectores:** cada pattern apunta a su archivo
     en `motor/detectors/<archivo>.py` y a `motor/CLAUDE.md`. Verificado
     que los 19 archivos `.py` existen en `motor/detectors/`.
@@ -197,7 +206,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
-## 2026-05-14 (Demo Day — bugs detectados en pruebas end-to-end con LLM real)
+## 2026-05-13 (Demo Day — bugs detectados en pruebas end-to-end con LLM real)
 
 ### Avances
 

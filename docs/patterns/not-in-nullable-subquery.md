@@ -37,30 +37,13 @@ permite Anti Join eficiente.
 
 ## Cómo aparece en el plan
 
-D21 **no usa el plan** — la señal vive en SQL + snapshot. Pero a
-título informativo, el plan de Q19 muestra un `SubPlan` (lo que D7
-detecta a nivel plan):
-
-```jsonc
-{
-  "Plan": {
-    "Node Type": "Seq Scan",
-    "Relation Name": "users",
-    "Filter": "(NOT (hashed SubPlan 1))",
-    "Plans": [
-      {
-        "Node Type": "Seq Scan",
-        "Relation Name": "posts",
-        "Subplan Name": "SubPlan 1",
-        "Parent Relationship": "SubPlan"
-      }
-    ]
-  }
-}
-```
-
-D7 dispara por el `SubPlan`; D21 complementa con la explicación
-específica del NULL trap. Ambos son TP.
+D21 **no usa el plan** — la señal vive en SQL + snapshot
+(`is_nullable` viene del catálogo vía B2; no aparece en EXPLAIN).
+El plan de Q19 (mostrado abajo en `## Ejemplo de plan`) sí contiene un
+`SubPlan` que D7 captura a nivel estructura; D21 complementa con la
+explicación específica del NULL trap. Ambos detectores son TP sobre
+Q19 — coexisten por diseño (D7 dice "hay un SubPlan", D21 dice "es
+específicamente el NULL trap, con bug silencioso").
 
 ## Regla de detección
 
@@ -168,6 +151,36 @@ LIMIT 10;
 `posts.author_id` es nullable por diseño en AppDB v1 (los posts de
 usuarios borrados pueden quedar con `author_id IS NULL`), por lo que
 la trampa NULL es real y reproducible.
+
+## Ejemplo de plan
+
+Plan de Q19 emitido por Postgres 16 sobre AppDB v1:
+
+```jsonc
+{
+  "Plan": {
+    "Node Type": "Seq Scan",
+    "Relation Name": "users",
+    "Filter": "(NOT (hashed SubPlan 1))",
+    "Plans": [
+      {
+        "Node Type": "Seq Scan",
+        "Relation Name": "posts",
+        "Subplan Name": "SubPlan 1",
+        "Parent Relationship": "SubPlan"
+      }
+    ]
+  }
+}
+```
+
+A título informativo: D21 **no inspecciona este plan**. La detección
+vive 100% en SQL + snapshot (`is_nullable` viene del catálogo vía B2).
+El plan se incluye para entender la frontera con D7 (que sí dispara
+estructuralmente por el `SubPlan`) y para que el lector vea por qué
+el rewrite a `NOT EXISTS` habilita Anti Join — Postgres podrá
+sustituir el `SubPlan` por un nodo `Hash Anti Join` o `Nested Loop
+Anti Join` cuando la nullability deje de ser un riesgo semántico.
 
 ## Frontera con detectores hermanos
 

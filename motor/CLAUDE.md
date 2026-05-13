@@ -1,5 +1,11 @@
 # motor — parser de EXPLAIN, detectores y recomendador
 
+> **Doc externo:** la guía orientada a personas fuera del equipo vive
+> en `docs/motor.md` (E11). Si cambias firmas o comportamiento de la
+> API pública listada abajo, o si añades/quitas un detector, actualiza
+> también ese archivo en el mismo commit (R15) — y refleja el cambio
+> en `docs/patterns/README.md` para que el catálogo no se desincronice.
+
 ## Propósito
 
 `/motor` es el cerebro determinístico de PgPilot. Recibe el output de

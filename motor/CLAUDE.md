@@ -65,6 +65,35 @@ cuya primera columna coincide con la columna del filtro `WHERE` del
 nodo. Cada match en `evidence["matches"]` incluye `table`, `column`,
 `estimated_rows`, `rows_removed_by_filter`, `index_name`, `filter`.
 
+### `detect_stale_statistics(plan, snapshot) -> Detection`
+Detector D2. Dispara sobre nodos scan (`Seq Scan`, `Index Scan`,
+`Index Only Scan`, `Bitmap Heap Scan`) cuya razón `plan_rows` vs
+`actual_rows` supera `STALE_STATS_RATIO = 10.0` en cualquier
+dirección. Requiere EXPLAIN ANALYZE (sin `actual_rows` no hay
+comparación). Caso especial: `actual_rows == 0` con
+`plan_rows > UMBRAL` cuenta como overestimación total. Cada match
+incluye `table`, `node_type`, `plan_rows`, `actual_rows`, `ratio`
+(redondeado a 2 decimales), `direction` (`overestimated` /
+`underestimated`) y `suggested_sql` (`ANALYZE <table>;`). Confianza
+0.85 (heurístico: el ratio identifica el síntoma pero no demuestra
+causalidad). Frontera con D18: D2 dispara solo en scans; el error de
+cardinalidad en *joins* causado por correlación entre columnas es
+competencia de D18, que recomienda `CREATE STATISTICS` multi-columna.
+
+### `detect_sort_spill_to_disk(plan, snapshot) -> Detection`
+Detector D3. Dispara en nodos `Sort` con `sort_space_type == "Disk"`
+(campo authoritativo emitido por Postgres). Fallback defensivo: si por
+algún motivo la versión de Postgres omite `Sort Space Type`, también
+dispara cuando `sort_method` contiene `"external merge"` o
+`"external sort"` (case-insensitive). Cada match incluye `sort_key`,
+`sort_method`, `sort_space_type`, `sort_space_used_kb`, `plan_rows`,
+`actual_rows`, `suggested_set_work_mem_sql` (`SET work_mem = '<N>MB';`
+dimensionado a 2x lo usado, default 64MB) y `suggested_create_index_sql`
+sobre la primera columna del sort_key cuando es parseable como
+`tabla.col` o `schema.tabla.col`; si la sort key es una expresión
+(`lower(name)`, etc.), el campo queda en `None` y la decisión del
+índice funcional la toma el recomendador. Confianza 0.95 (estructural).
+
 **Limitaciones conocidas:**
 
 - **(D1) Schema implícito en la resolución de tabla.** El plan trae
@@ -646,6 +675,8 @@ motor/
 │   ├── __init__.py
 │   ├── _common.py                       # helpers compartidos C1/D16
 │   ├── seq_scan_on_large_table.py       # C1
+│   ├── stale_statistics.py              # D2
+│   ├── sort_spill_to_disk.py            # D3p
 │   ├── like_leading_wildcard.py         # D4
 │   ├── function_in_where.py             # D5
 │   ├── or_across_tables.py              # D6

@@ -162,6 +162,83 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+
+#### D2 + D3 — Detectores de stats obsoletas y sort en disco
+- **Autor:** Regina Valenzuela. Rama `feat/D2-D3-detectores`.
+- **Archivos:**
+  `motor/detectors/stale_statistics.py` (nuevo, D2),
+  `motor/detectors/sort_spill_to_disk.py` (nuevo, D3),
+  `motor/detectors/__init__.py` (registra los dos),
+  `motor/__init__.py` (re-exporta),
+  `tests/motor/detectors/test_stale_statistics.py` (nuevo, 11 tests),
+  `tests/motor/detectors/test_sort_spill_to_disk.py` (nuevo, 10 tests),
+  `motor/CLAUDE.md` (2 secciones nuevas en API pública +
+  "Estructura interna" actualizada con dos archivos),
+  `docs/patterns/README.md` (filas 3 y 4 del índice flipped a ✅),
+  `docs/patterns/stale-statistics.md` (nuevo),
+  `docs/patterns/sort-spill-to-disk.md` (nuevo).
+- **Notas:** Los dos detectores siguen el contrato estándar
+  `(plan, snapshot) -> Detection` con `evidence={"matches": [...]}`.
+  Ambos son puramente estructurales sobre `PlanNode` (R2: cero regex
+  sobre SQL crudo). El `snapshot` se acepta por uniformidad pero
+  ninguno lo consulta hoy — toda la evidencia vive en el plan.
+  - **D2 (`stale_statistics`):** dispara cuando un nodo scan tiene
+    razón `plan_rows / actual_rows` ≥ `STALE_STATS_RATIO = 10.0` en
+    cualquier dirección. Restringido a `_SCAN_TYPES = (Seq Scan,
+    Index Scan, Index Only Scan, Bitmap Heap Scan)`: el error de
+    cardinalidad en joins (Hash Join, Merge Join, Nested Loop) es
+    competencia explícita de D18, que ya recomienda `CREATE STATISTICS`
+    multi-columna. Casos especiales manejados: `actual_rows = 0` con
+    `plan_rows > UMBRAL` cuenta como overestimación total (no se
+    divide por cero); `plan_rows = 0` con `actual_rows > UMBRAL`
+    cuenta como subestimación total. Requiere EXPLAIN ANALYZE (sin
+    `actual_rows` el detector calla, no levanta). Cada match incluye
+    `direction` ("overestimated" / "underestimated") y `suggested_sql`
+    = `ANALYZE <table>;`. Confianza 0.85 — heurístico que identifica
+    el síntoma sin demostrar la causa (puede haber correlación,
+    skew o stats default insuficientes; la prosa del LLM lo refina).
+  - **D3 (`sort_spill_to_disk`):** dispara en nodos `Sort` con
+    `sort_space_type == "Disk"` (campo authoritativo de Postgres).
+    Fallback defensivo cuando esa columna falta: dispara si
+    `sort_method` contiene `"external merge"` o `"external sort"`
+    (case-insensitive). Cada match emite dos hechos accionables:
+    `suggested_set_work_mem_sql` dimensionado a 2 × `sort_space_used`
+    redondeado al MB siguiente (default `64MB` cuando no hay dato),
+    y `suggested_create_index_sql` sobre la primera columna del
+    `sort_key` cuando es parseable como `tabla.col` o
+    `schema.tabla.col`. Sort keys con expresiones (`lower(name)`,
+    casts, coalesce) → `suggested_create_index_sql = None`, la
+    decisión del índice funcional queda en el recomendador.
+    Confianza 0.95 (estructural puro: el campo lo emite Postgres
+    con certeza).
+- **Tests:** ✅ 21 nuevos verde (11 D2 + 10 D3). Cobertura del par:
+  happy path (both directions para D2; both campos para D3),
+  frontera con detectores hermanos (D2 vs D18 explícito),
+  negativos (ratio bajo, EXPLAIN sin ANALYZE, Memory sort,
+  top-N heapsort), robustez (`relation_name=None`, `sort_key=None`,
+  sin `Sort Space Used`, `actual_rows=0`) y plurales (múltiples
+  matches en un plan).
+- **Cumplimiento de reglas:**
+  - R1 (motor decide): ambos son funciones puras, sin LLM.
+  - R2 (estructura, no SQL crudo): D2 lee `plan_rows`/`actual_rows`
+    tipados; D3 lee `sort_space_type`/`sort_method`/`sort_key`
+    tipados. Cero regex sobre texto.
+  - R9 (pureza): sin I/O, sin estado global, sin red.
+  - R10 (tests +/-): ambos tienen happy path + negativos +
+    frontera con hermanos + robustez + plurales.
+  - R14 (sin hardcoded): constantes umbral documentadas en código
+    (`STALE_STATS_RATIO`, `_DISK_SPACE_TYPES`, `_DISK_SORT_METHODS_LOWER`).
+    Cero literales de AppDB.
+  - R15: esta entrada + `motor/CLAUDE.md` + 2 archivos en
+    `docs/patterns/` + actualización del índice del catálogo,
+    todo en el mismo PR.
+- **Cobertura medida:** queda pendiente correr
+  `scripts/measure_coverage.py` con los nuevos detectores
+  registrados; según la última medición (entrada del 2026-05-11),
+  D2 cubre Q10 y D3 cubre Q05, por lo que la cobertura debería
+  pasar de 11/20 a 13/20.
+
+
 #### D13 + D14 + D15 — recomendador con selectividad, tests de cobertura, anti-FP
 - **Autor:** Andrés Angulo. Rama
   `feat/D13-D14-D15-recomendador-cobertura`.

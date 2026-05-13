@@ -122,9 +122,10 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
   - `motor.recommend()` procesa C1/D16/D17/D18 (detectores con recomendador formal).
   - Los otros 14 detectores generan una recomendación sintética `kind="finding"` con evidencia del detector, sin pasar por sandbox ni LLM.
   - Frontend: `tituloRecomendacion()` ahora maneja `kind="finding"`. El botón "Copiar SQL" y el badge de sandbox ya eran defensivos (`{rec.create_index_sql ? ...}`, `if (!verdict)`).
-  - Tests actualizados: 41 tests backend (incluye nuevos: multi-detector, per-detector isolation, all-detectors-explode, finding structure). Suite completa: 440 passed.
-  - Validación end-to-end con curl: Q17→C1+D20, Q18→D9+D16, Q20→D22, query limpia→0 detecciones.
-- **Tests:** ✅ Verde (440 passed, 1 skipped)
+  - Tests actualizados: 21 tests backend/orchestrator (+3 netos: multi-detector, per-detector isolation, finding structure). Suite total: 476 (main: 471, +5 netos).
+  - **Test de integración endpoint** (`tests/integration/test_analyze_endpoint_covers_planted_queries.py`): 20 queries plantadas → endpoint `/analyze` → ≥16 detecciones (rúbrica). Test Q01 canónico: D16 dispara con CREATE INDEX sobre `author_id`.
+  - Validación end-to-end con curl: Q01→D9+D16 (sandbox validated), Q17→C1+D20, Q18→D9+D16, Q20→D22, query limpia→0 detecciones.
+- **Tests:** ✅ Verde (476 collected, 2 integration passed con AppDB)
 
 ### Decisiones
 

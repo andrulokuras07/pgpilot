@@ -51,7 +51,7 @@ Lo distintivo:
 
 Confianza 0.95: la forma del plan es estructural y unívoca.
 
-## Recomendaciones
+## Recomendación
 
 El detector emite hasta tres alternativas en `evidence["matches"][0]
 ["suggested_alternatives"]`:
@@ -76,7 +76,7 @@ La decisión final entre las tres la negocia el LLM (con el contexto
 del usuario) o se deja al recomendador cuando aterricen plantillas
 específicas para D22.
 
-## Falsos positivos / negativos conocidos
+## Falsos positivos conocidos
 
 - **Aplica también a `sum`, `avg`, `max`, `min` sin WHERE.** No es un
   FP — el plan es idéntico y el anti-pattern (full scan para producir

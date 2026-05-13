@@ -140,6 +140,7 @@ def validate_index_recommendation(
             # mayúsculas/caracteres especiales.
             _, table_simple = _split_table_key(recommendation.table)
             with conn.transaction():
+                conn.execute(f"SET LOCAL statement_timeout = {timeout_ms}")
                 conn.execute(
                     SQL("CREATE INDEX {} ON {}.{} USING {} ({})").format(
                         Identifier(recommendation.index_name + "_c3"),

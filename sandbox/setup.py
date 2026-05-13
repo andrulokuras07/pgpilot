@@ -60,6 +60,7 @@ def setup_sandbox_schema(
     snapshot: SchemaSnapshot,
     *,
     schema_name: str | None = None,
+    timeout_ms: int = 5000,
 ) -> str:
     """Monta un schema temporal con las tablas y stats del snapshot.
 
@@ -72,12 +73,13 @@ def setup_sandbox_schema(
 
     El schema queda creado y commiteado al volver. Si una de las
     sentencias falla, la transacción se revierte y no queda schema
-    parcial.
+    parcial. Timeout duro de 5s por transacción (E6).
     """
     schema_name = schema_name or f"analysis_{uuid.uuid4().hex}"
 
     with pool.connection() as conn:
         with conn.transaction():
+            conn.execute(f"SET LOCAL statement_timeout = {timeout_ms}")
             conn.execute(SQL("CREATE SCHEMA {}").format(Identifier(schema_name)))
 
             for table in snapshot["schema"].values():
@@ -98,15 +100,49 @@ def setup_sandbox_schema(
     return schema_name
 
 
-def drop_sandbox_schema(pool: ConnectionPool, schema_name: str) -> None:
+def cleanup_zombie_schemas(
+    pool: ConnectionPool,
+    *,
+    prefix: str = "analysis_",
+) -> list[str]:
+    """Dropea schemas zombies que quedaron de análisis anteriores.
+
+    Un schema es zombie si matchea el prefijo `analysis_` y sigue
+    existente — significa que un análisis previo crasheó entre el
+    setup y el drop. Se llama al startup del backend (E5).
+
+    Devuelve los nombres de schemas dropeados (para logging).
+    """
+    with pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT schema_name FROM information_schema.schemata "
+            "WHERE schema_name LIKE %s",
+            (f"{prefix}%",),
+        ).fetchall()
+
+    dropped: list[str] = []
+    for (schema_name,) in rows:
+        drop_sandbox_schema(pool, schema_name)
+        dropped.append(schema_name)
+
+    return dropped
+
+
+def drop_sandbox_schema(
+    pool: ConnectionPool,
+    schema_name: str,
+    *,
+    timeout_ms: int = 5000,
+) -> None:
     """Borra el schema temporal y todo su contenido.
 
     `IF EXISTS` para que un caller pueda llamarlo sin saber si el
     schema todavía está. `CASCADE` porque dentro hay tablas, índices
-    y eventualmente constraints.
+    y eventualmente constraints. Timeout duro de 5s (E6).
     """
     with pool.connection() as conn:
         with conn.transaction():
+            conn.execute(f"SET LOCAL statement_timeout = {timeout_ms}")
             conn.execute(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema_name)))
 
 

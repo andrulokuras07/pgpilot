@@ -3,6 +3,7 @@ import Editor from "@monaco-editor/react";
 
 import DetectionCard from "./DetectionCard.jsx";
 import RecommendationCard from "./RecommendationCard.jsx";
+import WorkloadTab from "./WorkloadTab.jsx";
 import "./App.css";
 import "./Card.css";
 
@@ -19,8 +20,11 @@ function App() {
   const [respuesta, setRespuesta] = useState(null);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(false);
+  const [activeTab, setActiveTab] = useState("analyze");
 
-  async function analizar() {
+  async function analizar(queryOverride) {
+    const sql = queryOverride || query;
+    if (queryOverride) setQuery(sql);
     setCargando(true);
     setError(null);
     setRespuesta(null);
@@ -28,7 +32,7 @@ function App() {
       const r = await fetch(BACKEND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query: sql }),
       });
       if (!r.ok) {
         throw new Error(`HTTP ${r.status}`);
@@ -42,55 +46,88 @@ function App() {
     }
   }
 
+  function handleWorkloadSelect(selectedQuery) {
+    setQuery(selectedQuery);
+    setActiveTab("analyze");
+    analizar(selectedQuery);
+  }
+
   return (
     <div className="app">
       <header className="header">
         <h1 className="title">PgPilot</h1>
         <span className="subtitle">Analizador de queries Postgres</span>
+        <nav className="tab-nav">
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === "analyze" ? "tab-active" : ""}`}
+            onClick={() => setActiveTab("analyze")}
+          >
+            Analizar Query
+          </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === "workload" ? "tab-active" : ""}`}
+            onClick={() => setActiveTab("workload")}
+          >
+            Workload Analysis
+          </button>
+        </nav>
       </header>
-      <main className="main">
-        <section className="pane editor-pane">
-          <div className="pane-header">
-            <span className="pane-label">Query</span>
-            <button
-              type="button"
-              className="boton-analizar"
-              onClick={analizar}
-              disabled={cargando}
-            >
-              {cargando ? "Analizando…" : "Analizar"}
-            </button>
-          </div>
-          <div className="editor-container">
-            <Editor
-              height="100%"
-              defaultLanguage="sql"
-              theme="vs-dark"
-              value={query}
-              onChange={(v) => setQuery(v ?? "")}
-              options={{
-                fontSize: 14,
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-              }}
-            />
-          </div>
-        </section>
-        <aside className="pane result-pane">
-          <div className="pane-header">
-            <span className="pane-label">Análisis</span>
-          </div>
-          <div className="result-body">
-            <Resultado
-              respuesta={respuesta}
-              error={error}
-              cargando={cargando}
-            />
-          </div>
-        </aside>
-      </main>
+
+      {activeTab === "analyze" && (
+        <main className="main">
+          <section className="pane editor-pane">
+            <div className="pane-header">
+              <span className="pane-label">Query</span>
+              <button
+                type="button"
+                className="boton-analizar"
+                onClick={() => analizar()}
+                disabled={cargando}
+              >
+                {cargando ? "Analizando…" : "Analizar"}
+              </button>
+            </div>
+            <div className="editor-container">
+              <Editor
+                height="100%"
+                defaultLanguage="sql"
+                theme="vs-dark"
+                value={query}
+                onChange={(v) => setQuery(v ?? "")}
+                options={{
+                  fontSize: 14,
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                }}
+              />
+            </div>
+          </section>
+          <aside className="pane result-pane">
+            <div className="pane-header">
+              <span className="pane-label">Análisis</span>
+            </div>
+            <div className="result-body">
+              <Resultado
+                respuesta={respuesta}
+                error={error}
+                cargando={cargando}
+              />
+            </div>
+          </aside>
+        </main>
+      )}
+
+      {activeTab === "workload" && (
+        <main className="main workload-main">
+          <section className="pane workload-pane">
+            <WorkloadTab onSelectQuery={handleWorkloadSelect} />
+          </section>
+        </main>
+      )}
     </div>
   );
 }

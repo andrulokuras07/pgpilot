@@ -993,3 +993,41 @@ def test_compute_validations_directo_cubre_casos_de_falla() -> None:
         rec_skipped, snapshot, sandbox_verdict="skipped_no_sandbox_signal"
     )
     assert validations["sandbox_improves"] is None
+
+
+def test_compute_validations_schema_ok_acepta_finding_sin_prefijo_public() -> None:
+    """**Bug 3** — los findings de los detectores sin recomendador formal
+    guardan ``table`` sin schema (`"posts"`), pero el snapshot indexa por
+    ``"public.posts"``. ``_check_schema_ok`` debe hacer fallback con
+    prefijo ``public.`` para que el indicador no se pinte rojo
+    por una diferencia de notación interna.
+    """
+    snapshot = {
+        "schema": {
+            "public.posts": {
+                "schema": "public",
+                "name": "posts",
+                "columns": [{"name": "id"}, {"name": "author_id"}],
+                "indexes": [],
+            }
+        },
+    }
+    finding = {
+        "kind": "finding",
+        "table": "posts",  # sin prefijo, como los detectores no-formales
+        "column": "author_id",
+        "index_method": "",
+        "create_index_sql": "",
+    }
+    validations = _compute_validations(finding, snapshot, sandbox_verdict=None)
+    assert validations["schema_ok"] is True
+
+    finding_columna_inexistente = {
+        "kind": "finding",
+        "table": "posts",
+        "column": "no_existe_en_snapshot",
+        "index_method": "",
+        "create_index_sql": "",
+    }
+    validations = _compute_validations(finding_columna_inexistente, snapshot, sandbox_verdict=None)
+    assert validations["schema_ok"] is False  # fallback resolvió tabla pero columna no existe

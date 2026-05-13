@@ -284,6 +284,59 @@ def test_explain_recommendation_cross_validation_falla_cae_a_plantilla(
 # --- robustez ------------------------------------------------------
 
 
+# --- Bug 2: restauración de placeholders en la prosa que ve el usuario ---
+
+
+def test_explain_recommendation_restaura_placeholders_en_prosa_llm(
+    monkeypatch: pytest.MonkeyPatch,
+    detection: Detection,
+    plan: Any,
+    recommendation: Recommendation,
+    snapshot: dict[str, Any],
+) -> None:
+    """**Bug 2** — el LLM ve SQL sanitizada y su prosa menciona
+    `$LITERAL_X_Y`. Antes de devolver la `Explanation` al backend, los
+    placeholders se reemplazan por los valores originales del usuario.
+    El sanitizador es unidireccional: protege la salida al LLM, no la
+    salida al usuario (que es dueño de su query).
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-fake")
+    monkeypatch.delenv("LLM_ENABLED", raising=False)
+
+    sanitized = sanitize("SELECT * FROM posts WHERE author_id = 5000")
+    # Sanidad — el sanitizador realmente generó un placeholder para "5000"
+    assert "$LITERAL" in sanitized.sql
+    placeholder_keys = list(sanitized.literals.keys())
+    assert placeholder_keys, "El fixture asume al menos un literal sanitizado"
+    placeholder = f"${placeholder_keys[0]}"
+
+    def fake_post(*args: Any, **kwargs: Any) -> httpx.Response:
+        # LLM responde con prosa que menciona el placeholder, como pasa en producción.
+        return _http_response_with(
+            {
+                "explanation": (
+                    f"PgPilot detectó un Seq Scan en la cláusula WHERE author_id = {placeholder}. "
+                    "Crear un índice btree sobre author_id resolvería el problema."
+                ),
+                "suggested_rewrite": f"SELECT id, title FROM posts WHERE author_id = {placeholder}",
+                "confidence": 0.91,
+            }
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = explain_recommendation(detection, plan, recommendation, sanitized, snapshot=snapshot)
+
+    assert result.source == "llm"
+    assert (
+        "$LITERAL" not in result.explanation
+    ), f"La prosa devuelta al usuario aún contiene placeholders: {result.explanation!r}"
+    assert "5000" in result.explanation
+    assert result.suggested_rewrite is not None
+    assert "$LITERAL" not in result.suggested_rewrite
+    assert "5000" in result.suggested_rewrite
+
+
 def test_explain_recommendation_red_caida_cae_a_plantilla(
     monkeypatch: pytest.MonkeyPatch,
     detection: Detection,

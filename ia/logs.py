@@ -76,8 +76,14 @@ def is_logging_enabled() -> bool:
 
 
 def resolve_log_path() -> Path:
-    """Devuelve la ruta del archivo de logs según el entorno."""
-    return Path(os.getenv("PGPILOT_LLM_LOG_PATH", DEFAULT_LOG_PATH))
+    """Devuelve la ruta del archivo de logs según el entorno.
+
+    `.strip()` defiende contra `.env` con line endings CRLF (Windows): un
+    `\\r` al final del valor convertiría `logs/foo.jsonl` en una ruta
+    inválida (`logs/foo.jsonl\\r`).
+    """
+    raw = os.getenv("PGPILOT_LLM_LOG_PATH", "").strip()
+    return Path(raw) if raw else Path(DEFAULT_LOG_PATH)
 
 
 def build_base_record(

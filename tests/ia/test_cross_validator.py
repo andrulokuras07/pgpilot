@@ -257,7 +257,7 @@ def test_cross_validate_sandbox_pool_validated_no_agrega_razones(
         rec_create_index_valido,
         snapshot_posts,
         sandbox_pool=fake_pool,
-        sanitized_sql="SELECT 1 FROM posts WHERE author_id = $LITERAL_2_1",
+        original_sql="SELECT 1 FROM posts WHERE author_id = 5000",
     )
     assert result.passed is True
     assert result.sandbox_verdict == "validated"
@@ -283,7 +283,7 @@ def test_cross_validate_sandbox_pool_discarded_descarta(
         rec_create_index_valido,
         snapshot_posts,
         sandbox_pool=fake_pool,
-        sanitized_sql="SELECT 1 FROM posts WHERE author_id = $LITERAL_2_1",
+        original_sql="SELECT 1 FROM posts WHERE author_id = 5000",
     )
     assert result.passed is False
     assert result.sandbox_verdict == "discarded"

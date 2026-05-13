@@ -21,10 +21,14 @@ Diseño:
   `Recommendation`, el `LLMResponseSchema` y el `snapshot`. No toca
   el sandbox.
 - Hook opcional para la validación con sandbox (B16): si el caller
-  pasa `sandbox_pool` Y `sanitized_query`, se valida con
+  pasa `sandbox_pool` Y `original_sql`, se valida con
   `sandbox.validate_index_recommendation` que el índice
-  recomendado por el motor sigue siendo aplicable. El sandbox check
-  es lento (Docker), por eso es opcional — el orquestador puede
+  recomendado por el motor sigue siendo aplicable. **El sandbox recibe
+  la SQL original del usuario, no la sanitizada** — R4 solo protege al
+  LLM/3rd-party; el sandbox es infraestructura local de PgPilot y los
+  literales reales son necesarios para que Postgres parsee la query
+  (los placeholders `$LITERAL_X_Y` no son SQL ejecutable). El sandbox
+  check es lento (Docker), por eso es opcional — el orquestador puede
   decidir cuándo correrlo (típicamente: solo en el flujo /analyze del
   backend, no en tests unitarios).
 - Razones agrupadas en `CrossValidationResult.reasons` para que C8
@@ -79,7 +83,7 @@ def cross_validate(
     snapshot: dict[str, Any],
     *,
     sandbox_pool: Any | None = None,
-    sanitized_sql: str | None = None,
+    original_sql: str | None = None,
 ) -> CrossValidationResult:
     """Valida cruzando la respuesta del LLM contra schema, SQL y sandbox.
 
@@ -96,9 +100,12 @@ def cross_validate(
           NO debe existir en el snapshot (R3 explícito del backlog).
        c. Todas las columnas referenciadas existen en algún table del
           snapshot.
-    4. Si `sandbox_pool` y `sanitized_sql` están presentes (opcional):
+    4. Si `sandbox_pool` y `original_sql` están presentes (opcional):
        corremos `sandbox.validate_index_recommendation` para confirmar
-       que el motor sigue avalando el índice ante el sandbox.
+       que el motor sigue avalando el índice ante el sandbox. **El
+       sandbox recibe la SQL ORIGINAL** (con literales reales), no la
+       sanitizada: Postgres rechaza los placeholders `$LITERAL_X_Y` con
+       SyntaxError, y R4 solo aplica a salidas hacia el LLM/3rd-party.
 
     Es deliberadamente conservador: si en duda, falla. Mejor caer a
     plantilla determinística que arriesgar mostrar una sugerencia mala
@@ -155,8 +162,8 @@ def cross_validate(
                 )
 
     # 4. Validación opcional con sandbox
-    if sandbox_pool is not None and sanitized_sql is not None:
-        sandbox_verdict = _sandbox_verdict(sandbox_pool, snapshot, sanitized_sql, recommendation)
+    if sandbox_pool is not None and original_sql is not None:
+        sandbox_verdict = _sandbox_verdict(sandbox_pool, snapshot, original_sql, recommendation)
         if sandbox_verdict == "discarded":
             reasons.append(
                 "El sandbox no pudo validar el índice recomendado "
@@ -307,14 +314,17 @@ def _unknown_column_references(
 def _sandbox_verdict(
     sandbox_pool: Any,
     snapshot: dict[str, Any],
-    sanitized_sql: str,
+    original_sql: str,
     recommendation: Recommendation,
 ) -> str:
     """Corre `sandbox.validate_index_recommendation` y devuelve el verdict
-    crudo. Import inline para que el módulo `ia` no quede acoplado a
-    `sandbox` en su forma básica (los tests unit de C6 pueden correr
-    sin Docker mientras no le pasen `sandbox_pool`)."""
+    crudo. Recibe la SQL **original** (no sanitizada): Postgres no parsea
+    los placeholders `$LITERAL_X_Y` y el sandbox es infraestructura local
+    de PgPilot, así que R4 no aplica aquí. Import inline para que el
+    módulo `ia` no quede acoplado a `sandbox` en su forma básica (los
+    tests unit de C6 pueden correr sin Docker mientras no le pasen
+    `sandbox_pool`)."""
     from sandbox import validate_index_recommendation
 
-    result = validate_index_recommendation(sandbox_pool, snapshot, sanitized_sql, recommendation)
+    result = validate_index_recommendation(sandbox_pool, snapshot, original_sql, recommendation)
     return result.verdict

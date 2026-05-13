@@ -43,7 +43,7 @@ from ia.logs import (
     response_to_text,
 )
 from ia.prompt import build_explanation_prompt
-from ia.sanitizer import SanitizedQuery
+from ia.sanitizer import SanitizedQuery, restore
 from ia.templates import Explanation, explain_from_template
 from ia.validator import LLMResponseInvalid, request_validated_explanation
 from motor import Detection, ExplainResult, Recommendation
@@ -59,12 +59,19 @@ def explain_recommendation(
     sandbox_pool: Any | None = None,
     max_retries: int = 1,
     request_id: str | None = None,
+    original_sql: str | None = None,
 ) -> Explanation:
     """Devuelve la `Explanation` final para una recomendación del motor.
 
     `sandbox_pool` opcional: si se pasa, C6 corre también la validación
     estructural contra el sandbox (B16). Si es `None` se omite esa parte
     (tests unit, modo offline, perfil "rápido" del backend).
+
+    `original_sql` opcional: la SQL **original** del usuario, para pasarla
+    al sandbox cuando hay `sandbox_pool`. Postgres no parsea los
+    placeholders `$LITERAL_X_Y` del SanitizedQuery — R4 protege al LLM,
+    no al sandbox (infra local de PgPilot). Si no se pasa, el orquestador
+    cae al `sanitized_query.sql` reconstruido vía `restore()`.
 
     `request_id` opcional: identificador propagado al log estructurado
     de C8 para correlacionar con la request HTTP del backend. Si no se
@@ -74,6 +81,11 @@ def explain_recommendation(
     `LLMResponseInvalid`. Esos casos caen silenciosamente a plantilla.
     Cualquier otra excepción (bug interno, snapshot corrupto) sí se
     propaga — el caller decide qué hacer.
+
+    La prosa devuelta tiene los placeholders del sanitizador restaurados
+    a sus valores originales (Bug 2 — el usuario es dueño de su query y
+    no debería ver `$LITERAL_2_1` en lugar de `5000`). Los logs C8 siguen
+    guardando la versión sanitizada (privacidad / B11).
     """
     base = build_base_record(detection, recommendation, sanitized_query, request_id=request_id)
 
@@ -125,12 +137,20 @@ def explain_recommendation(
         return explanation
 
     # --- Camino 2: el LLM dio JSON válido. Falta cross-validation.
+    # El sandbox recibe SQL ejecutable (con literales), no la sanitizada:
+    # Postgres rechaza `$LITERAL_X_Y` con SyntaxError. R4 no aplica al
+    # sandbox (es infra local). Si el caller no nos pasó `original_sql`,
+    # lo reconstruimos vía `restore()` como fallback defensivo.
+    if sandbox_pool is not None:
+        sql_for_sandbox: str | None = original_sql or restore(sanitized_query)
+    else:
+        sql_for_sandbox = None
     cross = cross_validate(
         response,
         recommendation,
         snapshot,
         sandbox_pool=sandbox_pool,
-        sanitized_sql=sanitized_query.sql if sandbox_pool is not None else None,
+        original_sql=sql_for_sandbox,
     )
     raw_text = response_to_text(response)
 
@@ -154,7 +174,11 @@ def explain_recommendation(
         return explanation
 
     # --- Camino 3: feliz. LLM gana, prosa va al usuario.
-    explanation = Explanation(
+    # El LLM vio la query sanitizada; su prosa menciona `$LITERAL_X_Y`.
+    # Loggeamos esa versión (R4 / B11 — los logs nunca conservan literales),
+    # y SOLO al usuario le devolvemos la prosa con los literales restaurados
+    # (Bug 2 — el usuario es dueño de su query y debe verla con sus valores).
+    explanation_for_log = Explanation(
         explanation=response.explanation,
         suggested_rewrite=response.suggested_rewrite,
         confidence=response.confidence,
@@ -170,7 +194,53 @@ def explain_recommendation(
                 pydantic_passed=True,
                 cross=cross,
             ),
-            "final_shown": final_shown_payload(explanation),
+            "final_shown": final_shown_payload(explanation_for_log),
         }
     )
-    return explanation
+    return _restore_placeholders_in_explanation(explanation_for_log, sanitized_query)
+
+
+def _restore_placeholders_in_text(text: str, literals: dict[str, dict[str, str]]) -> str:
+    """Reemplaza cada `$LITERAL_<tipo>_<i>` en `text` por su valor original.
+
+    Ordenamos las claves por longitud descendente para que un placeholder
+    más corto (ej. `$LITERAL_1_1`) no rompa uno que comparte prefijo
+    (ej. `$LITERAL_1_10`). Espejo del helper en `sanitizer.restore()`,
+    pero operando sobre prosa arbitraria en vez de la query.
+    """
+    out = text
+    for key in sorted(literals.keys(), key=len, reverse=True):
+        info = literals[key]
+        original = info.get("original", "") if isinstance(info, dict) else str(info)
+        out = out.replace(f"${key}", original)
+    return out
+
+
+def _restore_placeholders_in_explanation(
+    explanation: Explanation,
+    sanitized_query: SanitizedQuery,
+) -> Explanation:
+    """Devuelve una copia de la `Explanation` con los placeholders del
+    sanitizador restaurados en `explanation.explanation` y `suggested_rewrite`.
+
+    El sanitizador es unidireccional: protege la salida hacia el LLM
+    (R4 / B11). Lo que regresa al usuario debe mostrar sus propios
+    literales — son su query y los conoce. Esta función vive aquí (no
+    en `sanitizer.py`) porque depende del tipo `Explanation` de C7.
+    """
+    if not sanitized_query.literals:
+        return explanation
+    new_text = _restore_placeholders_in_text(explanation.explanation, sanitized_query.literals)
+    new_rewrite = (
+        _restore_placeholders_in_text(explanation.suggested_rewrite, sanitized_query.literals)
+        if explanation.suggested_rewrite is not None
+        else None
+    )
+    if new_text == explanation.explanation and new_rewrite == explanation.suggested_rewrite:
+        return explanation
+    return Explanation(
+        explanation=new_text,
+        suggested_rewrite=new_rewrite,
+        confidence=explanation.confidence,
+        source=explanation.source,
+    )

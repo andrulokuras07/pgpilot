@@ -114,7 +114,7 @@ plantilla.
 No atrapa `LLMDisabledError` ni `LLMError`: el orquestador les da el
 mismo tratamiento (todos → plantilla).
 
-### `cross_validate(response, recommendation, snapshot, *, sandbox_pool=None, sanitized_sql=None) -> CrossValidationResult` — C6
+### `cross_validate(response, recommendation, snapshot, *, sandbox_pool=None, original_sql=None) -> CrossValidationResult` — C6
 
 Validación cruzada. Verifica que lo que dijo el LLM sea coherente con
 la realidad antes de mostrárselo al usuario. Reglas aplicadas:
@@ -128,10 +128,14 @@ la realidad antes de mostrárselo al usuario. Reglas aplicadas:
       existente en el schema (los nombres de índice son scope-schema
       en Postgres).
    c. Las columnas referenciadas existen en algún table del snapshot.
-4. (Opcional) Si `sandbox_pool` y `sanitized_sql` se pasan, corre
+4. (Opcional) Si `sandbox_pool` y `original_sql` se pasan, corre
    `sandbox.validate_index_recommendation` y descarta si verdict ==
    `"discarded"`. Sin sandbox_pool, esta verificación se omite (modo
-   rápido del backend / tests unit).
+   rápido del backend / tests unit). **`original_sql` es la SQL del
+   usuario sin sanitizar** — el sandbox necesita SQL ejecutable que
+   Postgres pueda parsear; los placeholders `$LITERAL_X_Y` rompen el
+   EXPLAIN con SyntaxError. R4 protege la salida hacia el LLM /
+   3rd-party, no la salida hacia infra local de PgPilot.
 
 Devuelve `CrossValidationResult(passed, reasons, sandbox_verdict)`.
 `reasons` es lista de strings — vacía cuando pasa, con prosa
@@ -164,7 +168,7 @@ La confianza baja a 0.6 si la recomendación no tiene selectividad
 (tabla sin ANALYZE); 0.8 cuando sí. La prosa de la plantilla incluye
 los campos `justification` y `expected_impact` ya armados por C2.
 
-### `explain_recommendation(detection, plan, recommendation, sanitized_query, *, snapshot, sandbox_pool=None, max_retries=1, request_id=None) -> Explanation` — orquestador
+### `explain_recommendation(detection, plan, recommendation, sanitized_query, *, snapshot, sandbox_pool=None, max_retries=1, request_id=None, original_sql=None) -> Explanation` — orquestador
 
 Función principal que el backend (C9) consume. Atajos:
 
@@ -172,6 +176,22 @@ Función principal que el backend (C9) consume. Atajos:
 - LLM responde basura tras reintentos → plantilla (C5 hecho-cuando).
 - LLM responde válido pero C6 falla → plantilla (C6 hecho-cuando).
 - LLM responde válido + C6 pasa → `Explanation(source="llm")`.
+
+`original_sql` opcional: SQL del usuario sin sanitizar. Se propaga al
+sandbox cuando hay `sandbox_pool` (Postgres no parsea
+`$LITERAL_X_Y`). Si el caller no lo pasa, el orquestador cae a
+`restore(sanitized_query)` — funciona porque restore es local y
+determinístico, pero los callers preferirían pasar el original
+explícitamente para evitar el round-trip.
+
+**Sanitización es unidireccional.** Protege la salida hacia el LLM
+(R4): `$LITERAL_X_Y` reemplaza strings/números/fechas/UUIDs/emails
+antes de armar el prompt. Pero al usuario le devolvemos prosa con los
+literales RESTAURADOS — son su query y los conoce. La restauración se
+aplica únicamente al `Explanation` que regresa al backend; los logs
+C8 siguen guardando la versión sanitizada (B11 sigue verde y los
+logs nunca conservan literales del usuario). Sandbox = infra local =
+recibe SQL original también.
 
 Garantía: **nunca propaga** `LLMDisabledError`, `LLMError` ni
 `LLMResponseInvalid` al backend. La pipeline degrada elegante a

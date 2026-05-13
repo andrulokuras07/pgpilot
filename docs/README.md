@@ -12,6 +12,9 @@ al equipo del proyecto viven en cada `CLAUDE.md` de su módulo.
 - [`motor.md`](motor.md) — guía del motor determinístico (parser de
   EXPLAIN, los 19 detectores, recomendador de índices, cómo agregar
   un detector nuevo). Cruzado con `patterns/`.
+- [`ia.md`](ia.md) — guía de la capa de integración con el LLM
+  (sanitización, prompt con guardrails, validación Pydantic +
+  cruzada, modo "LLM apagado" con plantillas, logs estructurados).
 - [`patterns/`](patterns/) — catálogo de anti-patterns que PgPilot
   detecta, un archivo por detector implementado.
 - [`decisiones.md`](decisiones.md) — registro vivo de decisiones
@@ -20,6 +23,6 @@ al equipo del proyecto viven en cada `CLAUDE.md` de su módulo.
   de negocio, briefs técnicos).
 
 Documentación de los módulos pendientes de publicar:
-`/ia`, `/workload`, `/sandbox`, `/backend`, `/frontend`.
+`/workload`, `/sandbox`, `/backend`, `/frontend`.
 Mientras tanto, su API interna está descrita en el `CLAUDE.md`
 correspondiente.

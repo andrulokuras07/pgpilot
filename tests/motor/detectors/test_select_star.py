@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from motor import detect_select_star, parse_explain
 
-
 _SIMPLE_INDEX_SCAN_PLAN = {
     "Plan": {
         "Node Type": "Index Scan",
@@ -75,9 +74,7 @@ def test_no_levanta_con_sql_no_parseable() -> None:
 
 def test_dispara_solo_en_select_anidado_con_star() -> None:
     """Outer con columnas explícitas, inner con `*` → dispara una vez."""
-    sql = (
-        "SELECT id FROM (SELECT * FROM users WHERE email = $LITERAL_1_0) sub"
-    )
+    sql = "SELECT id FROM (SELECT * FROM users WHERE email = $LITERAL_1_0) sub"
     plan = parse_explain(_SIMPLE_INDEX_SCAN_PLAN)
     detection = detect_select_star(plan, {}, sql=sql)
 

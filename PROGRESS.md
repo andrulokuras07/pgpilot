@@ -21,17 +21,21 @@ Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` par
 ## Estado actual del proyecto
 
 ### Cobertura de detección
-- **AppDB v1:** **17 / 20** queries esperadas cubiertas con D19+D20
-  (medición previa: 16/20 al 2026-05-12). Q17 ahora cubierta por D20.
-  **Objetivo rúbrica ≥16/20 SUPERADO.** Test de bloqueo
+- **AppDB v1:** **18 / 20** queries esperadas cubiertas tras fix de
+  D20 (forma Q17 real) + D22 nuevo (2026-05-13). Medición previa
+  efectiva: 16/20 al 2026-05-12 (PROGRESS.md afirmaba 17/20 pero D20
+  no disparaba contra Q17 por asunción incorrecta del plan).
+  **Objetivo rúbrica ≥16/20 SUPERADO con margen.** Test de bloqueo
   `test_coverage_meets_rubric_target` exige ≥16. Tests de integración
   requieren AppDB corriendo con `APPDB_TEST_TIMEOUT_MS=180000`.
-- **Disparos esperados con 15 detectores activos (C1+D4-D12+D16-D20):**
+- **Disparos esperados con 18 detectores activos (C1+D2+D3+D4-D12+D16-D20+D22):**
   D16=7 (Q01,Q02,Q06,Q08,Q09,Q15,Q16), D9=4 (Q01,Q07,Q12,Q18),
-  D7=2 (Q09,Q19), D20=1 (Q17), D4/D5/D12/D17/D18/D19=1 c/u,
-  D6/D8/D10/D11/C1=0.
-- **Queries aún huérfanas:** Q05 (sort spill → D3), Q10 (stats
-  obsoletas en tags chica → D2), Q20 (count(*) → D22).
+  D7=2 (Q09,Q19), D20=1 (Q17), D22=1 (Q20),
+  D4/D5/D12/D17/D18/D19=1 c/u, C1/D2/D3/D6/D8/D10/D11=0.
+- **Queries aún huérfanas:** Q05 (sort cabe en `work_mem`, D3 correcto),
+  Q10 (ratio plan/actual = 6× bajo umbral D2 de 10×). Código de los
+  detectores correcto; cubrir Q05/Q10 requiere ajustar el seed, no
+  relajar umbrales (rompería los anti-FP).
 - **Falsos positivos:** triage abierto. Q02/Q15/Q16 son "TP extras"
   (D16 captura el síntoma del índice faltante incluso cuando el
   anti-pattern raíz es OR cross-column, recheck con alta filter ratio
@@ -102,6 +106,118 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ## Bitácora
 
 *(Las entradas reales del proyecto van debajo de esta línea. Las más recientes arriba.)*
+
+---
+
+## 2026-05-13
+
+### Avances
+
+#### Fix D20 + D22 nuevo + fix FP D2 + registro D2/D3/D19/D20/D22 + python-multipart
+- **Autor:** Andrés Angulo. Rama `feat/D20-D22-cobertura-fixes`.
+- **Archivos:**
+  `motor/detectors/in_subquery_to_exists.py` (fix señal del plan),
+  `motor/detectors/count_star_full_table.py` (nuevo, D22),
+  `motor/detectors/stale_statistics.py` (fix FP bajo LIMIT),
+  `motor/detectors/__init__.py` (re-exporta D22),
+  `motor/__init__.py` (expone D22 en API pública),
+  `scripts/measure_coverage.py` (registra D2, D3, D19, D20, D22),
+  `tests/motor/detectors/test_count_star_full_table.py` (nuevo, 9 tests),
+  `tests/motor/detectors/test_in_subquery_to_exists.py` (+1 test forma Q17 real),
+  `tests/motor/detectors/test_stale_statistics.py` (+1 test scan bajo LIMIT),
+  `tests/integration/test_coverage_appdb_v1.py` (registra D2, D3, D22; Q17/Q20 expected_covered=True; notas en Q05/Q10),
+  `docs/patterns/count-star-full-table.md` (nuevo, catálogo D22),
+  `docs/patterns/in-subquery-to-exists.md` (actualizado con nueva señal del plan),
+  `requirements.txt` (añade `python-multipart>=0.0.9,<1`),
+  `motor/CLAUDE.md` (documenta D22, fix D20, fix D2),
+  `PROGRESS.md` (esta entrada).
+- **Notas:**
+  - **Fix D20:** la asunción original (Hash/Nested Loop con `Join Type=Semi`)
+    no se cumplía contra Q17 real. Postgres con AppDB v1 colapsa
+    `IN (SELECT author_id FROM posts ...)` en un HashAggregate que dedup,
+    y luego hace `Nested Loop Inner`. Ahora `_has_in_subquery_signal_in_plan`
+    también acepta la forma "join con Aggregate descendiente". El campo
+    de evidencia `has_semi_join_in_plan` se renombró a `has_in_signal_in_plan`
+    para reflejar la dualidad. Cubre Q17.
+  - **D22 (count(*) sobre tabla grande sin WHERE):** detector estructural.
+    Dispara cuando la raíz es `Aggregate(Plain)` sin `group_key`, no hay
+    joins en el subárbol, y existe al menos un scan sobre una sola tabla
+    grande (`estimated_rows ≥ 100_000`) sin Filter/Index Cond/Recheck Cond.
+    Cubre `count(*)` y también `sum`, `avg`, `max`, etc., sin WHERE (mismo
+    plan). Recomienda `pg_class.reltuples`, tabla de contadores, o filtrar.
+    Confianza 0.95. Cubre Q20.
+  - **Fix D2 FP bajo LIMIT:** S05 (`SELECT … FROM tags ORDER BY x LIMIT 10`)
+    disparaba D2 como falso positivo: el Index Scan reportaba
+    `plan_rows=6286, actual_rows=10` por push-down del LIMIT, pero las
+    stats no estaban realmente obsoletas. El walker ahora propaga
+    `under_limit` y D2 se abstiene en scans bajo cualquier `Limit`.
+  - **Investigación Q05/Q10:** ambos siguen huérfanos por condiciones del
+    seed actual de AppDB, no por bugs en D2/D3:
+      - Q05: el sort cabe en `work_mem` (3.7MB con quicksort en memoria) —
+        no derrama a disco; D3 correcto.
+      - Q10: ratio `plan_rows/actual_rows ≈ 6×` para el filtro de `tags`,
+        bajo el umbral D2 = 10×. Bajar el umbral provocaría FP; el seed
+        debe envejecer más para cruzarlo.
+    Notas registradas en `pending_detector` de cada PlantedQuery.
+  - **Registro completo en measure_coverage / test integración:** D2, D3,
+    D19, D20 ya estaban mergeados pero no aparecían en `measure_coverage.py`
+    ni en la tupla DETECTORS del test integración → cobertura subestimada.
+    Ahora 18 detectores activos en ambos lugares.
+  - **python-multipart:** dependencia faltante de FastAPI multipart parsing,
+    necesaria para `POST /workload`. Agregada a `requirements.txt`.
+- **Cumplimiento de reglas:**
+  - R1: detectores siguen siendo funciones puras; ninguna consulta al LLM.
+  - R2: D22 opera sobre estructura del plan; D20 sigue siendo dual SQL+plan;
+    D2 sigue leyendo solo `node.plan_rows`/`node.actual_rows`.
+  - R9: funciones puras, sin I/O ni estado global.
+  - R10: 11 tests nuevos (9 D22 + 1 D20 + 1 D2); suite total **445 passed,
+    1 skipped, 2 xfailed**, 0 fallos.
+  - R14: cero literales hardcoded.
+  - R15: esta entrada + `motor/CLAUDE.md` + `docs/patterns/count-star-full-table.md`
+    + `docs/patterns/in-subquery-to-exists.md` en el mismo PR.
+- **Tests:** ✅ **445 passed, 1 skipped, 2 xfailed** en 2:11 min.
+- **Cobertura AppDB v1:** **18/20** (Q05 y Q10 huérfanas por seed insuficiente).
+  Objetivo rúbrica ≥16/20 superado con margen. Falsos positivos: 0/10.
+
+### Decisiones
+
+#### D20: aceptar Aggregate-bajo-join como señal del plan
+- **Autor:** Andrés Angulo
+- **Contexto:** Q17 real en AppDB v1 produce `Nested Loop Inner` con un
+  HashAggregate por debajo (Postgres dedup de la subquery antes del join),
+  no un Semi Join. La señal original de D20 nunca disparaba.
+- **Alternativas consideradas:** (A) lower threshold drásticamente o eliminar
+  el requisito de señal del plan; (B) aceptar la forma estructural específica
+  que Postgres emite para Q17; (C) ignorar Q17 hasta v2 con un seed que fuerce
+  Semi Join.
+- **Decisión:** B. Añadir "join con Aggregate descendiente" como segunda
+  señal estructural válida.
+- **Razón:** Mantiene R2 (estructura del plan, no asunciones sobre SQL), no
+  introduce FP en los tests existentes (verificado), y cubre la forma que
+  Postgres elige naturalmente sin tener que tunear el seed.
+- **Trade-offs:** Un join con Aggregate descendiente *no* siempre viene de
+  un IN; si el SQL no tiene `IN (SELECT ...)`, D20 sigue absteniéndose. Por
+  eso D20 sigue exigiendo AMBAS señales (SQL + plan). El cambio expande la
+  cobertura del plan sin relajar el requisito SQL.
+
+#### Q05/Q10: aceptar como xfail documentado en lugar de relajar umbrales
+- **Autor:** Andrés Angulo
+- **Contexto:** D3 (sort spill) y D2 (stale stats) están correctos pero el
+  seed actual de AppDB no cruza los umbrales (3.7MB en quicksort en memoria;
+  ratio plan/actual de 6× vs umbral 10×).
+- **Alternativas consideradas:** (A) bajar los umbrales para forzar el
+  disparo en Q05/Q10; (B) modificar el seed para envejecer stats o crecer
+  `likes`/`tags`; (C) dejar las queries como `expected_covered=False` con
+  nota explicativa.
+- **Decisión:** C en esta rama, con nota en cada PlantedQuery señalando la
+  causa.
+- **Razón:** Bajar el umbral D2 a 5× se solaparía con D18 (que usa 5× para
+  joins) y produciría FP en queries sanas. Crecer el seed requiere
+  coordinación con `conector/` y queda fuera del scope de esta rama. La
+  cobertura ya supera la rúbrica (18/20 vs ≥16), así que el costo de no
+  detectar Q05/Q10 ahora es bajo.
+- **Trade-offs:** Quedan 2 queries sin cubrir documentadas como xfail. Si
+  el equipo quiere 20/20, hay que retocar el seed (no los detectores).
 
 ---
 

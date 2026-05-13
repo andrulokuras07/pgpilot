@@ -13,10 +13,10 @@ import sqlglot
 from motor import parse_explain
 from motor.detectors.having_without_aggregate import detect_having_without_aggregate
 
-
 # ---------------------------------------------------------------------------
 # Helpers de plan (el detector no usa el plan, pero la firma lo requiere)
 # ---------------------------------------------------------------------------
+
 
 def _plan_aggregate() -> dict:
     """Plan sintético con un Aggregate para Q16."""

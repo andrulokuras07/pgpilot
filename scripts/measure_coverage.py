@@ -36,7 +36,10 @@ from motor import (  # noqa: E402
     Detection,
     detect_cardinality_misestimate,
     detect_correlated_subquery,
+    detect_count_star_full_table,
     detect_function_in_where,
+    detect_having_without_aggregate,
+    detect_in_subquery_to_exists,
     detect_like_leading_wildcard,
     detect_missing_covering_index,
     detect_missing_index,
@@ -45,14 +48,18 @@ from motor import (  # noqa: E402
     detect_partial_index_opportunity,
     detect_select_star,
     detect_seq_scan_on_large_table,
+    detect_sort_spill_to_disk,
+    detect_stale_statistics,
     detect_type_mismatch,
     detect_unnecessary_cte_materialize,
     parse_explain,
 )
 from scripts.measure_c1_coverage import PLANTED, PlantedQuery  # noqa: E402
 
-DETECTORS: tuple[tuple[str, Callable[[Any, Any], Detection]], ...] = (
+DETECTORS: tuple[tuple[str, Callable[..., Detection]], ...] = (
     ("C1", detect_seq_scan_on_large_table),
+    ("D2", detect_stale_statistics),
+    ("D3", detect_sort_spill_to_disk),
     ("D4", detect_like_leading_wildcard),
     ("D5", detect_function_in_where),
     ("D6", detect_or_across_tables),
@@ -65,6 +72,9 @@ DETECTORS: tuple[tuple[str, Callable[[Any, Any], Detection]], ...] = (
     ("D16", detect_missing_index),
     ("D17", detect_partial_index_opportunity),
     ("D18", detect_cardinality_misestimate),
+    ("D19", detect_having_without_aggregate),
+    ("D20", detect_in_subquery_to_exists),
+    ("D22", detect_count_star_full_table),
 )
 
 

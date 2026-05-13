@@ -9,6 +9,7 @@ from motor.detection import Detection
 from motor.detectors import (
     detect_cardinality_misestimate,
     detect_correlated_subquery,
+    detect_count_star_full_table,
     detect_function_in_where,
     detect_having_without_aggregate,
     detect_in_subquery_to_exists,
@@ -63,6 +64,7 @@ __all__ = [
     "detect_cardinality_misestimate",
     "detect_having_without_aggregate",
     "detect_in_subquery_to_exists",
+    "detect_count_star_full_table",
     "Recommendation",
     "recommend",
     "recommend_for_seq_scan_on_large_table",

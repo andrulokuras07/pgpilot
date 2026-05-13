@@ -57,9 +57,7 @@ def detect_nested_loop_large_outer(
                 "outer_table": _scanned_relation(outer),
                 "outer_node_type": outer.node_type,
                 "outer_rows": outer_rows,
-                "outer_rows_source": (
-                    "actual" if outer.actual_rows is not None else "plan"
-                ),
+                "outer_rows_source": ("actual" if outer.actual_rows is not None else "plan"),
                 "join_type": node.join_type,
             }
         )

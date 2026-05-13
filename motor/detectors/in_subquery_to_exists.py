@@ -1,11 +1,10 @@
 """Detector D20 — IN con subquery debería ser EXISTS.
 
-Detecta cuando el plan muestra un Semi Join (Hash Join o Nested Loop
-con Join Type = "Semi") Y el SQL usa `col IN (SELECT ...)` con una
-subquery no correlacionada. La reescritura con EXISTS es
-semánticamente equivalente y permite al motor parar en cuanto
-encuentra la primera fila que satisface la condición, lo que suele
-ser más eficiente.
+Detecta cuando el SQL usa `col IN (SELECT ...)` con una subquery no
+correlacionada Y el plan confirma que el planner gastó trabajo en
+ejecutar esa forma. La reescritura con EXISTS es semánticamente
+equivalente y permite al motor parar en cuanto encuentra la primera
+fila que satisface la condición.
 
 Ejemplo:
     -- Ineficiente:
@@ -17,11 +16,15 @@ Ejemplo:
     WHERE EXISTS (SELECT 1 FROM posts WHERE author_id = id AND ...)
 
 La detección requiere AMBAS señales:
-  1. Plan: nodo Hash Join o Nested Loop con join_type="Semi".
+  1. Plan: el planner emitió una de estas formas para resolver el IN:
+     a) `Hash Join` / `Nested Loop` / `Merge Join` con join_type="Semi".
+     b) Una variante con `Aggregate` (dedup del subquery output)
+        debajo de un join — Postgres genera esta forma cuando colapsa
+        el IN a una lista única antes del join (Q17 real produce esta).
   2. SQL: patrón `col IN (SELECT ...)` no correlacionado.
 
 Esta dualidad evita falsos positivos con:
-  - IN sobre listas literales (no tienen Semi Join en el plan).
+  - IN sobre listas literales (no tienen Semi Join ni dedup en el plan).
   - Subqueries correlacionadas (D7 las detecta vía SubPlan; el plan
     no muestra Semi Join sino SubPlan → D20 no dispara).
   - NOT IN (D21, distinto anti-pattern con semántica NULL distinta).
@@ -67,7 +70,7 @@ def detect_in_subquery_to_exists(
     if sql is None:
         return Detection(found=False, confidence=0.0, evidence={"matches": []})
 
-    has_semi_join = _has_semi_join_in_plan(plan)
+    has_semi_join = _has_in_subquery_signal_in_plan(plan)
 
     try:
         tree = sqlglot.parse_one(sql, dialect="postgres")
@@ -99,9 +102,7 @@ def detect_in_subquery_to_exists(
             # Desempaquetar el Subquery wrapper (sqlglot envuelve IN subqueries
             # en un nodo Subquery; el Select real está en subquery_node.this).
             inner_select = (
-                subquery_node.this
-                if isinstance(subquery_node, exp.Subquery)
-                else subquery_node
+                subquery_node.this if isinstance(subquery_node, exp.Subquery) else subquery_node
             )
 
             if _is_correlated(subquery_node, outer_tables):
@@ -116,7 +117,7 @@ def detect_in_subquery_to_exists(
                 {
                     "column": col_name,
                     "inner_table": _first_from_table(inner_select),
-                    "has_semi_join_in_plan": has_semi_join,
+                    "has_in_signal_in_plan": has_semi_join,
                     "suggested_rewrite": suggested_rewrite,
                 }
             )
@@ -131,11 +132,33 @@ def detect_in_subquery_to_exists(
     )
 
 
-def _has_semi_join_in_plan(plan: ExplainResult | PlanNode) -> bool:
-    """True si el plan contiene algún nodo de join con join_type='Semi'."""
-    for node in find_nodes(plan, _JOIN_TYPES_WITH_SEMI):
-        if node.join_type == "Semi":
+def _has_in_subquery_signal_in_plan(plan: ExplainResult | PlanNode) -> bool:
+    """True si el plan tiene la forma que Postgres emite al resolver un IN.
+
+    Acepta dos variantes estructurales:
+
+    1. Semi Join: `Hash Join`/`Nested Loop`/`Merge Join` con
+       `join_type="Semi"`. La forma "limpia" cuando el planner detecta
+       que el IN es semánticamente un Semi Join.
+    2. Join con `Aggregate` descendiente bajo alguno de sus hijos: el
+       planner dedupó el output de la subquery (HashAggregate o Group
+       Aggregate sobre la columna del IN) antes de hacer el join.
+       Q17 real produce esta forma — Postgres elige Nested Loop Inner
+       con un Aggregate por debajo del lado outer en lugar de un Semi
+       Join explícito. El Aggregate aquí no viene de un GROUP BY del
+       usuario (esos quedan POR ENCIMA del join, no debajo).
+
+    Las dos formas son funcionalmente el mismo anti-pattern: el motor
+    materializa la lista del IN antes de cruzarla con la tabla outer,
+    en vez de short-circuit con EXISTS.
+    """
+    joins = find_nodes(plan, _JOIN_TYPES_WITH_SEMI)
+    for join in joins:
+        if join.join_type == "Semi":
             return True
+        for child in join.children:
+            if find_nodes(child, "Aggregate"):
+                return True
     return False
 
 
@@ -224,9 +247,7 @@ def _build_rewrite(
     if inner_where:
         exists_sel.set(
             "where",
-            exp.Where(
-                this=exp.And(this=corr, expression=inner_where.this.copy())
-            ),
+            exp.Where(this=exp.And(this=corr, expression=inner_where.this.copy())),
         )
     else:
         exists_sel.set("where", exp.Where(this=corr))

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from workload import parse_pg_stat_statements
 
-
 CSV_SAMPLE = """\
 query,calls,total_exec_time,mean_exec_time,rows
 SELECT * FROM users WHERE id = $1,500,2500.0,5.0,500

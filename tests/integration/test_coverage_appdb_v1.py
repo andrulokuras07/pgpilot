@@ -12,8 +12,9 @@ False, está documentado en `pending_detector` cuál detector falta
 
 Línea segura de la rúbrica: 16/20. El test agregador
 `test_coverage_meets_rubric_target` verifica que ≥16 queries quedan
-cubiertas; medición 2026-05-12 = 16/20 estable (D7 alcanza Q19 bajo
-`APPDB_TEST_TIMEOUT_MS=180000`). El test es de bloqueo: si en el futuro
+cubiertas; medición 2026-05-13 = 18/20 estable con D20 corregido y
+D22 nuevo (Q05/Q10 siguen huérfanas por condiciones del seed, ver
+notas en cada `PlantedQuery`). El test es de bloqueo: si en el futuro
 la cobertura baja, rompe y obliga a investigar la regresión.
 
 Marker: `integration` — requiere AppDB corriendo en `localhost:5434`.
@@ -35,6 +36,7 @@ from motor import (
     Detection,
     detect_cardinality_misestimate,
     detect_correlated_subquery,
+    detect_count_star_full_table,
     detect_function_in_where,
     detect_having_without_aggregate,
     detect_in_subquery_to_exists,
@@ -46,6 +48,8 @@ from motor import (
     detect_partial_index_opportunity,
     detect_select_star,
     detect_seq_scan_on_large_table,
+    detect_sort_spill_to_disk,
+    detect_stale_statistics,
     detect_type_mismatch,
     detect_unnecessary_cte_materialize,
     parse_explain,
@@ -56,6 +60,8 @@ pytestmark = pytest.mark.integration
 
 DETECTORS: tuple[tuple[str, Callable[..., Detection]], ...] = (
     ("C1", detect_seq_scan_on_large_table),
+    ("D2", detect_stale_statistics),
+    ("D3", detect_sort_spill_to_disk),
     ("D4", detect_like_leading_wildcard),
     ("D5", detect_function_in_where),
     ("D6", detect_or_across_tables),
@@ -70,6 +76,7 @@ DETECTORS: tuple[tuple[str, Callable[..., Detection]], ...] = (
     ("D18", detect_cardinality_misestimate),
     ("D19", detect_having_without_aggregate),
     ("D20", detect_in_subquery_to_exists),
+    ("D22", detect_count_star_full_table),
 )
 
 
@@ -83,9 +90,12 @@ class PlantedQuery:
 
 
 # Mismo orden y SQLs que `scripts/measure_c1_coverage.py.PLANTED`. La
-# columna `expected_covered` refleja el estado real medido el 2026-05-12
-# con los 13 detectores activos (C1 + D4..D12 + D16..D18). El día que
-# aterricen D20/D22/D2/D3, se flippea el flag correspondiente.
+# columna `expected_covered` refleja el estado real medido contra
+# AppDB v1 con los 17 detectores activos (C1 + D2 + D3 + D4..D12 +
+# D16..D20). Q05/Q10/Q20 siguen `expected_covered=False`: el código
+# de D2/D3 está mergeado pero las condiciones del seed actual no
+# cruzan el umbral (Q05 ordena en memoria 3.7MB, Q10 ratio plan/actual
+# 6× vs umbral 10×). Q20 espera D22.
 PLANTED: tuple[PlantedQuery, ...] = (
     PlantedQuery(
         "Q01",
@@ -120,7 +130,10 @@ PLANTED: tuple[PlantedQuery, ...] = (
             "GROUP BY u.username ORDER BY like_count DESC"
         ),
         expected_covered=False,
-        pending_detector="D3 (sort spill — pendiente)",
+        # D3 mergeado pero el sort cabe en work_mem (3.7MB quicksort en
+        # memoria con el seed actual). Para forzar spill: bajar work_mem
+        # del cliente o crecer el seed de `likes`.
+        pending_detector="D3 (sort spill — seed insuficiente)",
     ),
     PlantedQuery(
         "Q06",
@@ -160,7 +173,10 @@ PLANTED: tuple[PlantedQuery, ...] = (
         "Stats obsoletas en tags",
         "SELECT count(*) FROM tags WHERE use_count > 100",
         expected_covered=False,
-        pending_detector="D2 (stats obsoletas — pendiente)",
+        # D2 mergeado pero el ratio plan/actual en este seed es ~6×
+        # (umbral D2 = 10×). Bajar el umbral provocaría FP; el seed
+        # debe envejecer más para que cruce.
+        pending_detector="D2 (stats obsoletas — ratio bajo umbral)",
     ),
     PlantedQuery(
         "Q11",
@@ -244,8 +260,7 @@ PLANTED: tuple[PlantedQuery, ...] = (
         "Q20",
         "count(*) sobre tabla grande",
         "SELECT count(*) FROM posts",
-        expected_covered=False,
-        pending_detector="D22 (count(*) tabla grande — pendiente)",
+        expected_covered=True,  # D22
     ),
 )
 
@@ -341,7 +356,7 @@ def test_coverage_per_query(planted: PlantedQuery, coverage_results) -> None:
 
 def test_coverage_total_matches_expected(coverage_results) -> None:
     """Cobertura medida debe coincidir con el número de queries marcadas
-    `expected_covered=True` en PLANTED (17/20 con D19+D20 añadidos)."""
+    `expected_covered=True` en PLANTED (18/20 con D20 corregido y D22)."""
     covered = sum(1 for r in coverage_results.values() if r["covered"])
     expected = sum(1 for q in PLANTED if q.expected_covered)
     assert covered == expected, (

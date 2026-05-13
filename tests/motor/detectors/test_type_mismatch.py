@@ -16,10 +16,10 @@ import pytest
 from motor import parse_explain
 from motor.detectors.type_mismatch import detect_type_mismatch
 
-
 # ---------------------------------------------------------------------------
 # Helpers de snapshot
 # ---------------------------------------------------------------------------
+
 
 def _snap_with_btree(col: str = "status", table: str = "public.posts") -> dict:
     """Snapshot con un índice btree sobre `col` en `table`."""
@@ -67,6 +67,7 @@ def _snap_without_index(col: str = "status") -> dict:
 # ---------------------------------------------------------------------------
 # Happy paths
 # ---------------------------------------------------------------------------
+
 
 def test_dispara_con_cast_en_columna_y_indice_existente() -> None:
     """Seq Scan con cast ((status)::integer y índice btree en status → found."""
@@ -158,6 +159,7 @@ def test_multiples_casts_en_mismo_filtro() -> None:
 # Casos negativos
 # ---------------------------------------------------------------------------
 
+
 def test_no_dispara_sin_indice_en_columna_con_cast() -> None:
     """Cast presente pero sin índice → no es D11 (podría ser D16)."""
     raw = {
@@ -241,6 +243,7 @@ def test_no_dispara_con_index_scan() -> None:
 # ---------------------------------------------------------------------------
 # Robustez
 # ---------------------------------------------------------------------------
+
 
 def test_no_dispara_con_filter_none() -> None:
     """Nodo sin filtro: nada que inspeccionar."""

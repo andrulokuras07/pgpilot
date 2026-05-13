@@ -11,7 +11,13 @@ FastAPI que orquesta los módulos del proyecto y expone los endpoints que consum
 - ✅ B13 — endpoint `/analyze` stub con CORS para `localhost:5173`
 - ✅ C8 — logs estructurados (vive en `ia/logs.py`; el backend genera
   un `request_id` por petición y lo propaga para correlación)
-- ✅ C9 — `/analyze` orquesta la pipeline real (parser + C1 + C2 + C3 + C4-C7)
+- ✅ C9 — `/analyze` orquesta la pipeline real (parser + 18 detectores +
+  `motor.recommend()` + C3 + C4-C7). El orquestador corre todos los
+  detectores del motor en un loop, cada uno aislado por E8. Detectores
+  con firma extendida (`sql=`): D9, D11, D19, D20, D21. Detectores con
+  recomendador formal (C1, D16, D17, D18) pasan por `motor.recommend()`,
+  sandbox y LLM/template. Los otros 14 detectores emiten
+  `kind="finding"` con explicación determinística.
 - ✅ C11 — `/analyze` añade `sandbox_plan_comparison` por recomendación
   (datos del `ValidationResult` que el frontend usa para el before/after)
 - ✅ E3 — endpoint `POST /workload` (recibe CSV/JSON, devuelve top 10)
@@ -92,13 +98,19 @@ responde 422 si falta o está vacío.
 `errors` y `partial` (E8) están siempre presentes: `errors` vacío y
 `partial=false` en el caso normal.
 
-**Response (C9, con detección de C1):**
+**Response (C9, con detecciones — ejemplo multi-detector):**
+
+Cada detección incluye `code` (C1, D2, ..., D22) y `type` (nombre
+humano). `recommendations[]` mezcla recomendaciones formales (de
+`motor.recommend()`: C1/D16/D17/D18) con findings (`kind="finding"`)
+de los demás detectores.
 
 ```jsonc
 {
   "detections": [
     {
       "type": "seq_scan_on_large_table",
+      "code": "C1",
       "found": true,
       "confidence": 1.0,
       "evidence": { "matches": [{"table": "public.posts", "column": "author_id", ...}] }

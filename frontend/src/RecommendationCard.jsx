@@ -22,6 +22,10 @@ function tituloRecomendacion(rec) {
   if (rec.kind === "analyze") {
     return `Ejecutar ANALYZE sobre ${rec.table}`;
   }
+  if (rec.kind === "finding") {
+    const nombre = rec.code ? `[${rec.code}]` : "";
+    return `Hallazgo ${nombre} en ${rec.table || "la query"}`;
+  }
   return `Crear índice ${rec.index_method} sobre ${rec.table} (${rec.column})`;
 }
 

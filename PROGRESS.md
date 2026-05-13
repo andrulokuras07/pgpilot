@@ -109,6 +109,35 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (fix orquestador multi-detector)
+
+### Avances
+
+#### FIX — Orquestador conecta los 18 detectores al endpoint /analyze
+- **Autor:** Diego
+- **Archivos:** `backend/orchestrator.py`, `tests/backend/test_orchestrator.py`, `frontend/src/RecommendationCard.jsx`, `backend/CLAUDE.md`, `PROGRESS.md`
+- **Notas:** Bug crítico: el orquestador solo invocaba C1 (`detect_seq_scan_on_large_table`), ignorando los otros 17 detectores implementados. Cobertura real del endpoint era ~0/20 queries plantadas.
+  - Se reemplazó la llamada a un solo detector por un loop sobre los 18, cada uno en su propio `try/except` (E8).
+  - Detectores con firma extendida (`sql=`): D9, D11, D19, D20, D21 reciben `sql=query`.
+  - `motor.recommend()` procesa C1/D16/D17/D18 (detectores con recomendador formal).
+  - Los otros 14 detectores generan una recomendación sintética `kind="finding"` con evidencia del detector, sin pasar por sandbox ni LLM.
+  - Frontend: `tituloRecomendacion()` ahora maneja `kind="finding"`. El botón "Copiar SQL" y el badge de sandbox ya eran defensivos (`{rec.create_index_sql ? ...}`, `if (!verdict)`).
+  - Tests actualizados: 41 tests backend (incluye nuevos: multi-detector, per-detector isolation, all-detectors-explode, finding structure). Suite completa: 440 passed.
+  - Validación end-to-end con curl: Q17→C1+D20, Q18→D9+D16, Q20→D22, query limpia→0 detecciones.
+- **Tests:** ✅ Verde (440 passed, 1 skipped)
+
+### Decisiones
+
+#### kind="finding" para detectores sin recomendador
+- **Autor:** Diego
+- **Contexto:** 14 de 18 detectores no tienen recomendador formal (solo C1/D16/D17/D18 lo tienen). Necesitan una forma de llegar al frontend.
+- **Alternativas consideradas:** (A) Crear recomendadores stub para cada detector. (B) Usar `kind="finding"` sintético con evidencia del detector.
+- **Decisión:** Se eligió B — `kind="finding"`.
+- **Razón:** No hay SQL de índice que recomendar para la mayoría (D4=wildcard, D7=subquery correlacionada, etc.). Crear recomendadores vacíos rompe la semántica de `Recommendation`. El finding lleva la evidencia del detector y una explicación determinística basada en template.
+- **Trade-offs:** Los findings no pasan por sandbox ni por LLM. La explicación es menos rica que para recomendaciones formales, pero cumple R5 (funciona sin LLM) y R1 (el motor decide).
+
+---
+
 ## 2026-05-13 (F13+F14)
 
 ### Avances

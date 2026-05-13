@@ -109,6 +109,73 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (E10 — documentación API del conector)
+
+### Avances
+
+#### E10 — Documentación API del conector en `/docs/conector.md`
+- **Autor:** Emilio. Rama `docs/E10-conector-api`.
+- **Archivos:**
+  `docs/conector.md` (nuevo — guía completa orientada a externos:
+  propósito, requisitos, inicio rápido, garantías de seguridad, API
+  de referencia agrupada por flujo, modo offline, cache, errores,
+  3 ejemplos completos, limitaciones, cómo extender),
+  `docs/README.md` (índice mínimo; antes contenía "Contenido por
+  venir."),
+  `conector/CLAUDE.md` (callout en la cabecera apuntando al nuevo
+  doc externo + recordatorio R15 para mantenerlos en sync),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** El "hecho cuando" del backlog ("alguien externo al equipo
+  podría usar el módulo siguiendo el doc") marca la diferencia
+  importante entre este archivo y `conector/CLAUDE.md`:
+  - **`conector/CLAUDE.md`** es para agentes/devs **dentro** del
+    proyecto, con full repo context — lista decisiones internas, cómo
+    extender el módulo siguiendo las convenciones del repo, qué viola
+    R-X.
+  - **`docs/conector.md`** es para un developer **externo** que quiere
+    integrar o evaluar `/conector` por su cuenta — explica garantías
+    de seguridad como contrato (sección 4), errores típicos como
+    tabla (sección 6), ejemplos end-to-end completos (sección 7) y
+    limitaciones conocidas con honestidad (sección 8).
+  - **Cobertura:** las 11 funciones de `__all__` están documentadas
+    con firma, tipos, semántica y al menos un ejemplo. `TableSchema`,
+    `TableSize`, `ColumnStats` y `SchemaSnapshot` están descritas como
+    estructuras concretas con valores ilustrativos. Las dos garantías
+    R7 (read-only) y timeout 5s aparecen explícitas con SQL emitido y
+    cómo el cliente las verifica.
+  - **Sin tests nuevos** (E10 es documentación pura; el código del
+    módulo no cambió). Verifiqué manualmente que los snippets de
+    código del doc coinciden con la API actual:
+    - `ConnectionConfig` campos × 8 → coinciden con `conector/config.py`.
+    - Firma de `create_pool`, `extract_snapshot`, `get_snapshot`,
+      `compute_fingerprint`, `compute_content_hash`, `save_snapshot`,
+      `load_snapshot`, `invalidate_cache`, `export_bundle`,
+      `load_bundle`, `validate_bundle` → coinciden con
+      `conector/__init__.py`.
+    - Thresholds (`SMALL_ROWS_THRESHOLD=100_000`,
+      `LARGE_ROWS_THRESHOLD=1_000_000`) → coinciden con `conector/sizes.py`.
+  - **Sin cambios de API** ni de código ejecutable. E10 es 100%
+    documentación; cobertura AppDB v1 sigue en 18/20.
+- **Cumplimiento de reglas:**
+  - **R15:** PROGRESS.md + `conector/CLAUDE.md` actualizados en el
+    mismo commit. El callout que agrego en `conector/CLAUDE.md`
+    obliga a futuros mantenedores del módulo a actualizar
+    `docs/conector.md` cuando cambien la API pública.
+  - Honestidad sobre limitaciones (sección 8): cinco limitaciones
+    listadas explícitas (sin autenticación por certificado, no
+    persiste password, columnas exóticas en stats, sin parser de
+    `pg_dump`, sin TTL automático en cache) — sigue el espíritu de F3
+    aplicado a documentación técnica.
+- **Pendiente vigilar:**
+  - Cuando E10 equivalente para `/motor`, `/ia`, `/sandbox`,
+    `/backend`, `/frontend` se levante, mantener el patrón de
+    `docs/README.md` (un archivo por módulo + índice).
+  - Si futuros tickets cambian la firma de `create_pool` (ej.
+    autenticación por certificado) o el formato del cache, actualizar
+    `docs/conector.md` junto con el código en el mismo PR.
+
+---
+
 ## 2026-05-13 (E9 — indicadores de validación R3 en el frontend)
 
 ### Avances

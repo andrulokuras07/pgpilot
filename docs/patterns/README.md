@@ -30,7 +30,7 @@ archivo `.md`. Este `README.md` es el índice + la plantilla.
 | 15 | Error de cardinalidad en JOIN multi-condición | [`cardinality-misestimate.md`](cardinality-misestimate.md) | `motor.detect_cardinality_misestimate` (D18) | ✅ Implementado |
 | 16 | HAVING que debería ser WHERE | _(pendiente)_ | D19 | ⬜ Backlog |
 | 17 | IN con subquery debería ser EXISTS | _(pendiente)_ | D20 | ⬜ Backlog |
-| 18 | NOT IN con subquery potencialmente NULL | _(pendiente)_ | D21 | ⬜ Backlog |
+| 18 | NOT IN con subquery potencialmente NULL | _(pendiente)_ | D21 | ✅ Implementado 
 | 19 | `count(*)` sobre tabla grande sin WHERE | _(pendiente)_ | D22 | ⬜ Backlog |
 
 Cuando un detector aterriza, su autor:

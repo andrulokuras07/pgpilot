@@ -44,6 +44,7 @@ from motor import (  # noqa: E402
     detect_missing_covering_index,
     detect_missing_index,
     detect_nested_loop_large_outer,
+    detect_not_in_nullable_subquery,
     detect_or_across_tables,
     detect_partial_index_opportunity,
     detect_select_star,
@@ -74,6 +75,7 @@ DETECTORS: tuple[tuple[str, Callable[..., Detection]], ...] = (
     ("D18", detect_cardinality_misestimate),
     ("D19", detect_having_without_aggregate),
     ("D20", detect_in_subquery_to_exists),
+    ("D21", detect_not_in_nullable_subquery),
     ("D22", detect_count_star_full_table),
 )
 

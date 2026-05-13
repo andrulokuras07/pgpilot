@@ -294,6 +294,53 @@ externas dentro de la subquery. La recomendación es reescribir como
   FROM con GROUP BY). El requisito SQL (`IN (SELECT ...)` no
   correlacionado) previene los FP correspondientes.
 
+
+### `detect_not_in_nullable_subquery(plan, snapshot, *, sql=None) -> Detection`
+Detector D21. Usa firma extendida con `sql=`. Cubre el bug silencioso
+y de performance de `WHERE col NOT IN (SELECT inner_col FROM t ...)`
+cuando `inner_col` admite NULL en el schema. La detección vive 100%
+en SQL + snapshot: el plan se acepta por uniformidad de firma pero
+no se inspecciona (la información estructural relevante —
+`is_nullable` — no aparece en el EXPLAIN; viene del catálogo vía B2).
+
+**Por qué dispara:** la semántica trivaluada de SQL hace que un solo
+NULL en la subquery vacíe el resultado completo (`x <> NULL` →
+UNKNOWN; AND con UNKNOWN nunca es TRUE). Además, el planner no
+puede convertir el `NOT IN` a Anti Join cuando la columna interna
+es nullable; típicamente queda como `SubPlan`/`hashed SubPlan` sin
+short-circuit. `NOT EXISTS` resuelve ambos problemas.
+
+Cada match incluye `column` (la del outer), `inner_table`,
+`inner_column`, `inner_is_nullable` (True por construcción),
+`null_trap` (True; señal para que la capa de prosa diga
+"bug silencioso" y no solo "lento") y `suggested_rewrite` con
+`NOT EXISTS` correlacionado parseable por sqlglot. Confianza 0.95
+— el bug es estructural, no heurístico.
+
+**Frontera con detectores hermanos:**
+- **D7 (correlated_subquery)** dispara en Q19 también porque
+  Postgres resuelve el `NOT IN` con `SubPlan`. La coexistencia es
+  intencional (regla #1 del proyecto: el motor reporta hechos
+  estructurales; la capa de prosa prioriza). D7 dice "hay un
+  SubPlan"; D21 dice "es específicamente el NULL trap".
+- **D20 (in_subquery_to_exists)** cubre `IN`, no `NOT IN`. La
+  exclusión es por construcción: `_is_negated` filtra opuestos.
+
+**Limitaciones conocidas:**
+- Si `inner_col` es una expresión (`COALESCE(col, 0)`,
+  `col + 1`), `_first_projected_column` devuelve `None` y D21 se
+  abstiene. Falso negativo voluntario: la expresión puede o no
+  introducir NULLs y razonar sobre eso requiere análisis semántico
+  fuera de scope.
+- `_is_correlated` exige calificador de tabla (`t.col`) — sin él,
+  no podemos distinguir referencia exterior. Misma decisión que D20.
+- El rewrite reemplaza todo el WHERE del outer; si la query tiene
+  `WHERE status = 1 AND id NOT IN (SELECT ...)`, las condiciones
+  adicionales se pierden. Limitación documentada heredada de D20.
+- Snapshot ausente / tabla desconocida / columna no encontrada →
+  abstención (no FP). Preferimos perder Q19 antes que recomendar
+  un rewrite sobre supuestos no verificados.
+
 ### `detect_count_star_full_table(plan, snapshot) -> Detection`
 Detector D22. Estructural puro. Dispara cuando:
 1. La raíz es `Aggregate` con `strategy="Plain"` y sin `group_key`.

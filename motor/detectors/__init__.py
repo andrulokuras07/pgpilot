@@ -12,6 +12,8 @@ from motor.detectors.or_across_tables import detect_or_across_tables
 from motor.detectors.partial_index_opportunity import detect_partial_index_opportunity
 from motor.detectors.select_star import detect_select_star
 from motor.detectors.seq_scan_on_large_table import detect_seq_scan_on_large_table
+from motor.detectors.sort_spill_to_disk import detect_sort_spill_to_disk
+from motor.detectors.stale_statistics import detect_stale_statistics
 from motor.detectors.type_mismatch import detect_type_mismatch
 from motor.detectors.unnecessary_cte_materialize import (
     detect_unnecessary_cte_materialize,
@@ -19,6 +21,8 @@ from motor.detectors.unnecessary_cte_materialize import (
 
 __all__ = [
     "detect_seq_scan_on_large_table",
+    "detect_stale_statistics",
+    "detect_sort_spill_to_disk",
     "detect_like_leading_wildcard",
     "detect_function_in_where",
     "detect_or_across_tables",

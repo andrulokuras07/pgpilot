@@ -109,6 +109,94 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-14 (F17 — catálogo de patterns final)
+
+### Avances
+
+#### F17 — Catálogo de anti-patterns completo y coherente
+- **Autor:** Emilio. Rama `docs/F17-pattern-catalog`.
+- **Archivos:**
+  `docs/patterns/count-star-full-table.md` (agregada sección `## Ejemplo de plan`
+  con JSON real del plan paralelo de Q20 + verificación punto por punto
+  de la regla de detección; agregada sección `## Validación` con
+  sandbox y LLM cross-validator),
+  `docs/patterns/having-without-aggregate.md` (agregada sección
+  `## Validación`; normalizado título `Ejemplo de plan afectado` →
+  `Ejemplo de plan`),
+  `docs/patterns/in-subquery-to-exists.md` (agregada sección
+  `## Validación`; normalizado título `Ejemplo de plan afectado` →
+  `Ejemplo de plan`),
+  `docs/patterns/not-in-nullable-subquery.md` (agregada sección
+  `## Validación` con nota crítica sobre R3 + R4 — D21 detecta bug
+  semántico, no solo performance; el sandbox debe verificar
+  diferencia de resultados, no solo de costo),
+  `docs/patterns/README.md` (nuevo párrafo "Estado del catálogo (F17,
+  2026-05-14)" marcando los 19 patterns como completos y coherentes),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** F17 pide "revisar `/docs/patterns/` para que los
+  implementados estén completos y coherentes. Cada uno con: nombre,
+  problema, regla de detección, recomendación, ejemplo de query,
+  ejemplo de plan donde aparece". Auditados los 19 archivos
+  (C1, D2-D12, D16-D22) contra el código de los detectores
+  (`motor/__init__.py.__all__` y `motor/CLAUDE.md`):
+  - **Cobertura del mínimo F17:** las 6 secciones requeridas
+    (nombre, problema, regla, recomendación, ejemplo query, ejemplo
+    plan) están presentes en los 19 patterns. `count-star-full-table.md`
+    era el único con la sección "Ejemplo de plan" implícita dentro de
+    "Cómo aparece en el plan" pero sin bloque JSON formal — se agregó
+    el bloque JSON con la forma paralela típica de Q20.
+  - **Coherencia con la plantilla del README:** la plantilla pide
+    además "Validación", "Falsos positivos", "Tests" y "Referencias".
+    4 patterns no tenían `## Validación` (count-star, having,
+    in-subquery, not-in-nullable) — se agregaron, cada una específica
+    al detector (qué chequea el sandbox y qué chequea
+    `cross_validate`). Las otras 15 ya estaban completas.
+  - **Coherencia de confianzas:** verificadas una por una contra el
+    código:
+    - C1: 1.0 ✓ — D2: 0.85 ✓ — D3: 0.95 ✓ — D4: 0.9 ✓ — D5: 0.9 ✓
+    - D6: 0.85 ✓ — D7: 0.95 ✓ — D8: 0.8 ✓ — D9: 0.85 ✓ — D10: 0.7 ✓
+    - D11: 0.9 ✓ — D12: 0.85 ✓ — D16: 0.95 ✓ — D17: 0.8 ✓
+    - D18: 0.85 ✓ — D19: 0.9 ✓ — D20: 0.9 ✓ — D21: 0.95 ✓ — D22: 0.95 ✓
+  - **Coherencia de recommender kinds:** las menciones de
+    `kind="create_index"` (D16), `kind="create_partial_index"` (D17),
+    `kind="create_statistics"` (D18) y `kind="analyze"` (C1) coinciden
+    con los `Literal` declarados en `motor/recommender.py::RecommendationKind`.
+  - **Normalización cosmética:** dos patterns (D19, D20) usaban el
+    título `## Ejemplo de plan afectado` mientras el resto usa
+    `## Ejemplo de plan`. Normalizados al título canónico para que
+    el catálogo lea uniforme.
+  - **Cross-link con detectores:** cada pattern apunta a su archivo
+    en `motor/detectors/<archivo>.py` y a `motor/CLAUDE.md`. Verificado
+    que los 19 archivos `.py` existen en `motor/detectors/`.
+- **Sin cambios de código ejecutable.** F17 es 100% documentación.
+  Cobertura AppDB v1 sigue en 18/20 (medición post-Demo-Day-bugfix
+  no afectada).
+- **Cumplimiento de reglas:**
+  - **R15:** PROGRESS.md actualizado en el mismo commit; no hubo
+    cambios de API en `motor/` así que `motor/CLAUDE.md` no necesita
+    update (la lista de detectores y confianzas ya estaba al día —
+    F17 alineó la documentación externa con esa fuente de verdad).
+  - **R13 (nombres significativos):** rama `docs/F17-pattern-catalog`,
+    commit y PR siguen la convención `<tipo>/<código-descripción>`.
+  - **R6/R3 reforzados en docs:** las nuevas secciones de Validación
+    dejan explícito (a) que el sandbox no copia datos (R6) y por eso
+    la validación semántica de D21 queda como deuda hasta tener datos
+    sintéticos, (b) que toda salida del LLM se valida contra el
+    snapshot antes de mostrar (R3).
+- **Pendiente vigilar:**
+  - Si aterriza un detector D23 (o se reescribe uno existente),
+    seguir el patrón: crear `<nombre>.md` con las 10 secciones de la
+    plantilla, agregar fila al índice de `docs/patterns/README.md` y
+    actualizar `motor/__init__.py.__all__`, `motor/CLAUDE.md` y
+    `docs/motor.md` §4.3 (catálogo) en el mismo commit. El callout
+    R15 de `motor/CLAUDE.md` recuerda esto.
+  - Si en producción aparece un caso de FP/FN sobre uno de los 19
+    patterns documentados, actualizar la sección "Falsos positivos
+    conocidos" del pattern correspondiente — esa sección es deuda
+    viva y debe reflejar lo observado, no solo lo razonado a priori.
+
+---
+
 ## 2026-05-14 (Demo Day — bugs detectados en pruebas end-to-end con LLM real)
 
 ### Avances

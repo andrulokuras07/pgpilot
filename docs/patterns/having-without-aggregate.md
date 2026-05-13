@@ -64,6 +64,23 @@ WHERE author_id = 1000
 GROUP BY author_id
 ```
 
+## Validación
+
+- **Sandbox:** ejecutar `EXPLAIN ANALYZE` de la query original y de la
+  versión reescrita (`suggested_rewrite`) sobre el schema temporal y
+  comparar el costo total. El rewrite es válido si:
+  1. El plan reescrito ya no muestra el `Filter` después del
+     `Aggregate` (el filtro se aplica antes).
+  2. El costo total baja o se mantiene (nunca debería subir; si lo
+     hace, descartar la sugerencia y reportar al log).
+- **LLM (`/ia/cross_validator.py`):** valida que las columnas y la
+  tabla mencionadas en el rewrite existan en el snapshot. El rewrite
+  emitido por D19 ya viene parseable con sqlglot (test
+  `test_rewrite_q16_es_parseable_y_tiene_where`); si el LLM intenta
+  modificar más allá del rewrite original, se valida contra el
+  snapshot y se cae a la plantilla determinística si menciona
+  columnas inexistentes.
+
 ## Falsos positivos conocidos
 
 - **HAVING con mezcla legítima.** Si el HAVING combina una columna del
@@ -87,7 +104,7 @@ GROUP BY author_id
 HAVING author_id = 1000;
 ```
 
-## Ejemplo de plan afectado
+## Ejemplo de plan
 
 ```jsonc
 {

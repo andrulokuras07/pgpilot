@@ -9,6 +9,14 @@ su entrada aquí, y cada entrada debe alinear con un detector real.
 **Convención (definida en `/CLAUDE.md` raíz):** un anti-pattern por
 archivo `.md`. Este `README.md` es el índice + la plantilla.
 
+**Estado del catálogo (F17, 2026-05-14):** los 19 detectores
+implementados (C1 + D2-D12 + D16-D22) tienen entrada completa siguiendo
+la plantilla de abajo. Cada `.md` cubre el mínimo requerido por F17
+(nombre, problema, regla de detección, recomendación, ejemplo de query,
+ejemplo de plan) y las secciones extra de la plantilla (validación,
+falsos positivos, tests, referencias). El catálogo queda **completo y
+coherente** con el código del módulo `motor/`.
+
 ## Índice
 
 | # | Anti-pattern | Archivo | Detector | Estado |

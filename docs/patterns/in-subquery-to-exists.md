@@ -95,6 +95,23 @@ WHERE EXISTS (
 )
 ```
 
+## Validación
+
+- **Sandbox:** correr `EXPLAIN ANALYZE` de la query original
+  (`IN (SELECT ...)`) y del rewrite (`EXISTS (SELECT 1 ...)`) sobre el
+  schema temporal. El rewrite se valida si:
+  1. El `Execution Time` baja respecto al original (típico: short-circuit
+     de EXISTS gana en outers grandes).
+  2. El plan reescrito conserva la semántica (mismo `Plan Rows` y
+     mismo conjunto de filas esperado).
+  Si el costo sube (improbable, pero posible cuando la outer es muy
+  pequeña), se descarta y se mantiene la prosa explicativa sin
+  recomendar el rewrite.
+- **LLM (`/ia/cross_validator.py`):** valida que las tablas y columnas
+  del `EXISTS` existan en el snapshot. Si el LLM altera el `WHERE` del
+  EXISTS más allá del `suggested_rewrite` original y referencia
+  columnas inexistentes, se descarta y se cae a la plantilla.
+
 ## Falsos positivos conocidos
 
 - **La correlación se detecta solo por calificador.** `WHERE id IN
@@ -118,7 +135,7 @@ WHERE id IN (
 );
 ```
 
-## Ejemplo de plan afectado
+## Ejemplo de plan
 
 ```jsonc
 {

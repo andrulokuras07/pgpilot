@@ -20,6 +20,15 @@ FastAPI que orquesta los módulos del proyecto y expone los endpoints que consum
   `plan_rows_after` (filas estimadas por el planner antes/después) al
   sub-objeto, para el comparativo enriquecido + resumen ejecutivo del
   frontend
+- ✅ E8 — aislamiento de errores en `/analyze`: cada etapa del
+  orquestador (sanitize · extracción · parser · detector · recomendador ·
+  validación de sandbox · explicación/LLM) va en su `try/except`. Si una
+  etapa falla, las demás siguen lo que puedan y el endpoint devuelve
+  resultados parciales (200) con `errors[]` (`{stage, message}`) y
+  `partial=true`, en vez de crashear. La extracción (EXPLAIN) es la única
+  etapa "terminal" → sigue mapeando a `AnalyzeError`/4xx/504/500. Red de
+  seguridad final en el handler: cualquier excepción inesperada fuera del
+  orquestador → 500 genérico (detalle loggeado, nunca filtrado al cliente)
 
 ---
 
@@ -77,8 +86,11 @@ responde 422 si falta o está vacío.
 **Response (C9, sin detecciones):**
 
 ```json
-{ "detections": [], "recommendations": [] }
+{ "detections": [], "recommendations": [], "errors": [], "partial": false }
 ```
+
+`errors` y `partial` (E8) están siempre presentes: `errors` vacío y
+`partial=false` en el caso normal.
 
 **Response (C9, con detección de C1):**
 
@@ -120,9 +132,37 @@ responde 422 si falta o está vacío.
         "source": "llm"                        // o "template"
       }
     }
-  ]
+  ],
+  "errors": [],          // E8 — etapas caídas: [{stage, message}]
+  "partial": false       // E8 — true ⇔ errors no vacío
 }
 ```
+
+**Response (E8, degradación parcial):** si una etapa interna falla, el
+endpoint sigue devolviendo `200` con lo que sí pudo calcular más el flag.
+Ejemplo (la explicación/LLM revienta de forma inesperada — `explain_recommendation`
+ya absorbe sus fallos esperables; esto es un bug crudo): las detecciones
+y la recomendación determinística siguen ahí, la explicación cae a la
+plantilla (`source="template"`), y:
+
+```jsonc
+{
+  "detections": [ /* … */ ],
+  "recommendations": [ /* … con explanation de plantilla */ ],
+  "errors": [
+    { "stage": "explain",
+      "message": "No se pudo generar la explicación enriquecida de una recomendación; se muestra la versión determinística." }
+  ],
+  "partial": true
+}
+```
+
+`stage` ∈ `sanitize | parse | detect | recommend | validate | explain`.
+`message` es genérico a propósito (E8 sigue la política de `AnalyzeError`:
+no se filtran nombres de tabla, paths ni stack traces al cliente; el
+detalle real va al log server-side). Si `sanitize` falla, además, el LLM
+NO se llama para ninguna recomendación (R4) y todas las explicaciones
+salen de plantilla.
 
 El frontend (B14/C10) consume `recommendations[].explanation.text` para
 la tarjeta y `recommendations[].create_index_sql` para el botón "copiar
@@ -149,7 +189,12 @@ lugar del comparativo.
 - `403` — el usuario intentó una mutación (UPDATE/INSERT/DROP). La
   conexión es read-only por R7.
 - `504` — EXPLAIN excedió el `statement_timeout` (5s por default).
-- `500` — estado inesperado interno (no debería pasar).
+- `500` — estado inesperado interno. Tras E8 esto solo ocurre si la
+  extracción (EXPLAIN) revienta de forma no-Postgres o si algo
+  inesperado falla **fuera** del orquestador (el detalle se loggea; el
+  cliente ve "Error interno al analizar la query."). Los fallos de
+  etapas internas (parser, detector, recomendador, sandbox, LLM) NO
+  producen 500 — devuelven `200` con `partial=true` (ver arriba).
 
 ### `GET /health`
 
@@ -181,17 +226,25 @@ Para producción habrá que mover la lista de orígenes a un settings module (en
 - `test_analyze.py` — contrato del endpoint (200 con stub, validación
   422, healthcheck, 503 sin AppDB, propagación del payload del
   orquestador, traducción de `AnalyzeError` a status, propagación de
-  pools del state, generación de `request_id`).
+  pools del state, generación de `request_id`). E8: propagación de
+  `errors`/`partial` del orquestador y el 500 genérico (sin stack trace,
+  sin filtrar detalles) ante un fallo inesperado fuera del orquestador.
 - `test_cors.py` — preflight desde `localhost:5173`, header en POST
   real, bloqueo a orígenes no permitidos.
 - `test_orchestrator.py` — tests directos de
   `backend.orchestrator.analyze_query` con `FakePool`. Cubre: no
-  detección → arrays vacíos, detección → estructura completa, sandbox
-  populando `verdict`, sandbox que explota → `verdict=None` sin
-  romper pipeline, LLM mockeado marca `source="llm"`, mapeo de
-  errores Postgres a `AnalyzeError` (400/403/504/500). El "hecho
-  cuando" de C9 vive en
-  `test_analyze_query_con_deteccion_devuelve_estructura_completa`.
+  detección → arrays vacíos (con `errors=[]`, `partial=false`),
+  detección → estructura completa, sandbox populando `verdict`, sandbox
+  no configurado ≠ error, LLM mockeado marca `source="llm"`, mapeo de
+  errores Postgres a `AnalyzeError` (400/403/504/500), y un fallo
+  no-Postgres en la extracción → 500. **E8 — aislamiento por etapa:**
+  romper `parse_explain`, el detector, el recomendador, `sanitize`, el
+  sandbox o `explain_recommendation` → la pipeline sigue lo que puede,
+  devuelve resultados parciales con la etapa en `errors` y `partial=true`,
+  nunca crashea. El "hecho cuando" de C9 vive en
+  `test_analyze_query_con_deteccion_devuelve_estructura_completa`; el de
+  E8 en `test_analyze_query_llm_que_explota_devuelve_deterministico_y_flag`
+  (LLM roto → detecciones + recomendaciones determinísticas + flag).
 
 Son unit (usan `fastapi.testclient.TestClient` y un `FakePool`
 inline, sin levantar uvicorn ni necesitar AppDB).

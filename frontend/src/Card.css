@@ -34,6 +34,28 @@
   white-space: pre-wrap;
 }
 
+/* Banner de degradación parcial (E8): el análisis terminó pero alguna
+ * etapa del pipeline falló — se muestra arriba de las tarjetas. */
+.cards-warning {
+  color: #d7ba7d;
+  font-size: 13px;
+  padding: 12px;
+  background: #3a3322;
+  border-left: 3px solid #d7ba7d;
+  border-radius: 2px;
+  line-height: 1.5;
+}
+
+.cards-warning-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cards-warning ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
 /* --- Tarjeta base ------------------------------------------------- */
 
 .card {

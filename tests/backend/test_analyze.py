@@ -19,11 +19,17 @@ from backend.main import app
 
 
 def test_analyze_devuelve_estructura_vacia(client):
-    """Sin detecciones, ambas listas vacías y status 200."""
+    """Sin detecciones, ambas listas vacías y status 200. E8 añadió
+    `errors`/`partial` al contrato top-level."""
     r = client.post("/analyze", json={"query": "SELECT 1"})
     assert r.status_code == 200
     body = r.json()
-    assert body == {"detections": [], "recommendations": []}
+    assert body == {
+        "detections": [],
+        "recommendations": [],
+        "errors": [],
+        "partial": False,
+    }
 
 
 def test_analyze_funciona_con_query_compleja(client):
@@ -35,7 +41,12 @@ def test_analyze_funciona_con_query_compleja(client):
     )
     r = client.post("/analyze", json={"query": sql})
     assert r.status_code == 200
-    assert r.json() == {"detections": [], "recommendations": []}
+    assert r.json() == {
+        "detections": [],
+        "recommendations": [],
+        "errors": [],
+        "partial": False,
+    }
 
 
 def test_analyze_rechaza_body_sin_query(client):
@@ -111,6 +122,67 @@ def test_analyze_traduce_analyze_error_a_status_indicado(client, monkeypatch):
     r = client.post("/analyze", json={"query": "UPDATE posts SET x=1"})
     assert r.status_code == 403
     assert "Solo lectura" in r.json()["detail"]
+
+
+def test_analyze_propaga_partial_y_errors_del_orquestador(client, monkeypatch):
+    """E8: cuando el orquestador devuelve `partial=True` con una lista de
+    `errors` de etapas caídas, el endpoint los expone tal cual (no los
+    descarta ni cambia el status — sigue siendo 200 con resultados
+    parciales)."""
+    fake_payload = {
+        "detections": [
+            {
+                "type": "seq_scan_on_large_table",
+                "found": True,
+                "confidence": 1.0,
+                "evidence": {"matches": [{"table": "public.posts"}]},
+            }
+        ],
+        "recommendations": [
+            {
+                "kind": "create_index",
+                "table": "public.posts",
+                "column": "author_id",
+                "create_index_sql": "CREATE INDEX idx_x ON public.posts (author_id);",
+                "sandbox_verdict": None,
+                "explanation": {"text": "...", "source": "template", "confidence": 0.6},
+            }
+        ],
+        "errors": [
+            {"stage": "explain", "message": "No se pudo generar la explicación enriquecida."}
+        ],
+        "partial": True,
+    }
+
+    monkeypatch.setattr("backend.main.analyze_query", lambda **_: fake_payload)
+
+    r = client.post("/analyze", json={"query": "SELECT * FROM posts WHERE author_id = 42"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["partial"] is True
+    assert body["errors"] == [
+        {"stage": "explain", "message": "No se pudo generar la explicación enriquecida."}
+    ]
+    # Lo determinístico sigue ahí.
+    assert body["detections"][0]["type"] == "seq_scan_on_large_table"
+    assert body["recommendations"][0]["create_index_sql"]
+
+
+def test_analyze_error_no_manejado_devuelve_500_sin_stacktrace(client, monkeypatch):
+    """E8: un fallo inesperado FUERA del orquestador (su contrato es no
+    propagar más que `AnalyzeError`) no debe devolver un stack trace ni
+    colgar el endpoint — 500 con mensaje genérico, sin filtrar detalles."""
+
+    def boom(**kwargs: Any) -> Any:
+        raise RuntimeError("internal bug touching table super_secret_clientes")
+
+    monkeypatch.setattr("backend.main.analyze_query", boom)
+
+    r = client.post("/analyze", json={"query": "SELECT 1"})
+    assert r.status_code == 500
+    detail = r.json()["detail"]
+    assert detail == "Error interno al analizar la query."
+    assert "super_secret_clientes" not in detail
 
 
 def test_analyze_pasa_request_id_al_orquestador(client, monkeypatch):

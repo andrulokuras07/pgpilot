@@ -14,6 +14,11 @@ SPA en React + Vite con un editor Monaco para escribir SQL y un panel donde se m
 - ✅ C11 — comparativo before/after del plan dentro de la tarjeta de recomendación
 - ✅ E7 — comparativo enriquecido: titular de transición de tipo de nodo,
   filas estimadas por panel, resumen ejecutivo automático
+- ✅ E8 — aviso de análisis parcial: cuando el backend devuelve
+  `partial=true` con `errors[]`, se muestra un banner ámbar arriba de
+  las tarjetas listando qué etapa(s) fallaron; lo que sí se calculó
+  (detecciones / recomendaciones determinísticas) se sigue mostrando
+  debajo
 
 ---
 
@@ -39,13 +44,13 @@ frontend/
 ├── .gitignore            # node_modules, dist, .vite
 └── src/
     ├── main.jsx              # createRoot + StrictMode
-    ├── App.jsx               # editor Monaco + botón Analizar + panel de tarjetas
+    ├── App.jsx               # editor Monaco + botón Analizar + panel de tarjetas + BannerParcial (E8)
     ├── DetectionCard.jsx     # C10 — tarjeta por entrada de `detections[]`
     ├── RecommendationCard.jsx# C10 — tarjeta por entrada de `recommendations[]`
     ├── PlanComparison.jsx    # C11 + E7 — comparativo before/after enriquecido
     ├── index.css             # reset y color-scheme dark
     ├── App.css               # layout y tema VS Code
-    └── Card.css              # estilos de tarjetas + comparativo (C10/C11/E7)
+    └── Card.css              # estilos de tarjetas + comparativo (C10/C11/E7) + .cards-warning (E8)
 ```
 
 ---
@@ -84,10 +89,20 @@ frontend/
 
 ---
 
-## Cómo se mapea el payload del backend a la UI (C10/C11)
+## Cómo se mapea el payload del backend a la UI (C10/C11/E7/E8)
 
 El payload de `/analyze` (ver `backend/CLAUDE.md`) se proyecta así:
 
+- `partial` + `errors[]` (E8) → si `partial === true`, el componente
+  `BannerParcial` (en `App.jsx`) renderea un aviso ámbar (`.cards-warning`)
+  arriba de las tarjetas con la lista de `errors[].message` (una etapa
+  del pipeline falló — sanitize / parser / detector / recomendador /
+  sandbox / LLM). Las tarjetas de lo que sí se calculó se muestran
+  debajo igual. Si `partial` es `true` pero `detections` y
+  `recommendations` están vacíos (ej. el parser falló), en vez del
+  mensaje verde "sin anti-patterns" se muestra el banner + una nota
+  ("no se completó el análisis"). Cuando `partial` es `false`, todo
+  funciona como antes (el banner no aparece).
 - `detections[]` → una `DetectionCard` por entrada. Muestra
   título humanizado, confianza del motor, y la lista de
   `evidence.matches[]` con tablas/columnas afectadas.

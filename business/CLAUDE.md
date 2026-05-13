@@ -15,8 +15,9 @@ Documentos de discovery, validación de mercado y preparación para el Demo Day.
 - ✅ F12 — TAM/SAM/SOM (`mercado.md` + `.docx`)
 - ✅ F13 — Plan Go-to-Market (`gtm.md` + `.docx`)
 - ✅ F14 — Diferenciador defendible (`diferenciador.md` + `.docx`)
-- ⬜ F6-F8 — Entrevistas ejecutadas y documentadas
-- ⬜ F9 — Definición de problema con datos
+- ✅ F6 — Entrevista 1: Carlos Orellán, DBA (`entrevista-1.md`)
+- ⬜ F7-F8 — Entrevistas 2 y 3 pendientes
+- ✅ F9 — Definición de problema con datos (`problema.md`)
 - ⬜ F10 — User persona detallado
 - ⬜ F15 — Documento de negocio consolidado
 
@@ -31,6 +32,8 @@ business/
 ├── competencia.md / .docx   # F3 — investigación competitiva
 ├── lista-entrevistados.md   # F4 — 5 candidatos con criterios de selección
 ├── guion-entrevistas.md     # F5 — 9 preguntas para entrevistas de discovery
+├── entrevista-1.md          # F6 — Entrevista Carlos Orellán (DBA)
+├── problema.md              # F9 — Definición del problema con datos
 ├── pricing.md / .docx       # F11 — modelo de pricing (4 tiers)
 ├── mercado.md / .docx       # F12 — TAM/SAM/SOM con metodología y fuentes
 ├── gtm.md / .docx           # F13 — plan go-to-market (primeros 10 clientes)

@@ -51,3 +51,9 @@ cache/
 # Logs estructurados de interacciones LLM (C8). Por dev, no se versionan.
 logs/
 *.jsonl
+
+# Grabaciones de entrevistas (evidencia local, no versionar)
+interviews/*.mp4
+interviews/*.mov
+interviews/*.avi
+interviews/*.mkv

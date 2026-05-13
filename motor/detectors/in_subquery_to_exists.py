@@ -170,11 +170,13 @@ def _is_negated(in_expr: exp.In) -> bool:
 def _from_table_names(select: exp.Select) -> set[str]:
     """Nombres y aliases de las tablas en el FROM del SELECT dado.
 
-    Nota: sqlglot almacena la cláusula FROM bajo la clave `"from_"`
-    (no `"from"`) porque `from` es palabra reservada de Python.
+    Nota de compatibilidad sqlglot: versiones distintas almacenan la
+    cláusula FROM bajo `"from"` o `"from_"` (este último porque `from`
+    es palabra reservada de Python en versiones viejas). Probamos
+    ambas para ser robustos a la versión instalada.
     """
     names: set[str] = set()
-    from_clause = select.args.get("from_")
+    from_clause = select.args.get("from") or select.args.get("from_")
     if from_clause is None:
         return names
     for table in from_clause.find_all(exp.Table):
@@ -201,8 +203,11 @@ def _is_correlated(subquery: exp.Select, outer_tables: set[str]) -> bool:
 
 
 def _first_from_table(inner_select: exp.Select) -> str | None:
-    """Nombre de la primera tabla del FROM del SELECT interior, o None."""
-    from_clause = inner_select.args.get("from_")
+    """Nombre de la primera tabla del FROM del SELECT interior.
+
+    Compatibilidad sqlglot: clave `"from"` (>=25) o `"from_"` (legado).
+    """
+    from_clause = inner_select.args.get("from") or inner_select.args.get("from_")
     if from_clause is None:
         return None
     tables = list(from_clause.find_all(exp.Table))

@@ -44,6 +44,7 @@ from motor import (
     detect_missing_covering_index,
     detect_missing_index,
     detect_nested_loop_large_outer,
+    detect_not_in_nullable_subquery,
     detect_or_across_tables,
     detect_partial_index_opportunity,
     detect_select_star,
@@ -76,6 +77,7 @@ DETECTORS: tuple[tuple[str, Callable[..., Detection]], ...] = (
     ("D18", detect_cardinality_misestimate),
     ("D19", detect_having_without_aggregate),
     ("D20", detect_in_subquery_to_exists),
+    ("D21", detect_not_in_nullable_subquery),
     ("D22", detect_count_star_full_table),
 )
 
@@ -248,13 +250,13 @@ PLANTED: tuple[PlantedQuery, ...] = (
         "Q19",
         "NOT IN con NULL",
         "SELECT id FROM users WHERE id NOT IN (SELECT author_id FROM posts) LIMIT 10",
-        expected_covered=True,  # D7 dispara por el SubPlan del NOT IN
-        # D7 cubre la presencia del SubPlan pero NO el bug específico
-        # del NULL trap (el resultado puede ser silenciosamente vacío
-        # si la subquery devuelve NULL). D21 sigue pendiente para la
-        # prosa específica de ese caso. Si Q19 excede
-        # `APPDB_TEST_TIMEOUT_MS`, el test se vuelve FN y el agregador
-        # lo reporta como regresión (no como flake).
+        expected_covered=True,  # D7 dispara por el SubPlan + D21 aporta
+        # la prosa específica del NULL trap (posts.author_id es nullable
+        # en AppDB v1, por lo que D21 cruza el patrón NOT IN con
+        # is_nullable=True del snapshot). D7 cubre la presencia
+        # estructural del SubPlan; D21 explica el bug silencioso.
+        # Si Q19 excede `APPDB_TEST_TIMEOUT_MS`, el test se vuelve FN y
+        # el agregador lo reporta como regresión (no como flake).
     ),
     PlantedQuery(
         "Q20",

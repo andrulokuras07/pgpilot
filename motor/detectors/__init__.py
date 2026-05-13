@@ -11,6 +11,9 @@ from motor.detectors.like_leading_wildcard import detect_like_leading_wildcard
 from motor.detectors.missing_covering_index import detect_missing_covering_index
 from motor.detectors.missing_index import detect_missing_index
 from motor.detectors.nested_loop_large_outer import detect_nested_loop_large_outer
+from motor.detectors.not_in_nullable_subquery import (
+    detect_not_in_nullable_subquery,
+)
 from motor.detectors.or_across_tables import detect_or_across_tables
 from motor.detectors.partial_index_opportunity import detect_partial_index_opportunity
 from motor.detectors.select_star import detect_select_star
@@ -40,5 +43,6 @@ __all__ = [
     "detect_cardinality_misestimate",
     "detect_having_without_aggregate",
     "detect_in_subquery_to_exists",
+    "detect_not_in_nullable_subquery",
     "detect_count_star_full_table",
 ]

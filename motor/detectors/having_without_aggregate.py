@@ -146,11 +146,12 @@ def _build_rewrite(select: exp.Select, having: exp.Having) -> str:
 def _first_table(select: exp.Select) -> str | None:
     """Devuelve el nombre de la primera tabla del FROM, o None.
 
-    Nota: en sqlglot, la cláusula FROM se almacena bajo la clave
-    `"from_"` (no `"from"`) porque `from` es palabra reservada de
-    Python. `Table.name` devuelve el nombre sin schema.
+    Compatibilidad sqlglot: la cláusula FROM se almacena bajo
+    `"from"` (>=25) o `"from_"` (versiones legacy donde `from` era
+    palabra reservada). Probamos ambas. `Table.name` devuelve el
+    nombre sin schema.
     """
-    from_expr = select.args.get("from_")
+    from_expr = select.args.get("from") or select.args.get("from_")
     if from_expr is None:
         return None
     tables = list(from_expr.find_all(exp.Table))

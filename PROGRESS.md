@@ -113,6 +113,67 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+## 2026-05-13 (entrada posterior)
+
+### Avances
+
+#### D21 — detector NOT IN con subquery nullable (Q19, bug silencioso)
+- **Autor:** Regina Valenzuela. Rama `feat/D21-detector-not-in-null-trap`.
+- **Archivos:**
+  `motor/detectors/not_in_nullable_subquery.py` (nuevo, D21),
+  `motor/detectors/__init__.py` (registra D21),
+  `motor/__init__.py` (expone D21 en API pública),
+  `tests/motor/detectors/test_not_in_nullable_subquery.py` (nuevo, 12 tests),
+  `scripts/measure_coverage.py` (añade D21 al registro),
+  `tests/integration/test_coverage_appdb_v1.py` (añade D21 a DETECTORS;
+  comentario de Q19 actualizado),
+  `docs/patterns/not-in-nullable-subquery.md` (nuevo),
+  `docs/patterns/README.md` (fila D21 flipped a ✅),
+  `motor/CLAUDE.md` (documenta D21 + estructura interna).
+- **Notas:**
+  - **D21 (NOT IN nullable):** detector SQL+snapshot. Parsea el SQL
+    con sqlglot, localiza `col NOT IN (SELECT inner_col FROM t)` no
+    correlacionado, y verifica `is_nullable` de `inner_col` contra
+    `snapshot["schema"][...]["columns"]`. Si la columna admite NULL
+    dispara con `null_trap=True` y `confidence=0.95`. Cubre **Q19**.
+  - **El plan no se usa.** La firma `(plan, snapshot, *, sql=None)`
+    se mantiene por uniformidad pero la información estructural
+    relevante (`is_nullable`) no aparece en el EXPLAIN — viene del
+    catálogo vía B2. Detector aparte de D7/D20 a propósito porque
+    el anti-pattern es distinto: D7 reporta presencia de SubPlan, D20
+    cubre IN, D21 cubre NOT IN + NULL trap específico.
+  - **Coexistencia con D7 en Q19 es intencional** (regla #1 del
+    proyecto). D7 dispara por el SubPlan a nivel plan; D21 aporta la
+    prosa específica del bug silencioso ("tu reporte aparece en blanco
+    cuando posts.author_id es NULL"). Ambos son TP estructurales.
+  - **Confianza 0.95** (alta) porque el bug es reproducible y
+    estructural, no heurístico: con `is_nullable=True` confirmado en
+    el snapshot, la semántica trivaluada de SQL garantiza el problema.
+  - **Severidad ALTA** documentada en el backlog: no es solo
+    performance, es bug silencioso. La capa de prosa debe priorizarlo.
+- **Tests:** ✅ 12 tests nuevos verde (happy path Q19, Q19 con LIMIT,
+  rewrite parseable, columna NOT NULL, IN sin NOT, lista literal,
+  correlacionada, sin SQL, SQL inválido, snapshot vacío, tabla
+  desconocida, proyección no-columna, resolución cross-schema).
+- **Cobertura medida:** Q19 ya estaba marcada `expected_covered=True`
+  por D7 — la cobertura global se mantiene en 18/20. D21 mejora la
+  calidad de la prosa (Criterio 2.2), no el recall (Criterio 2.1).
+- **Cumplimiento de reglas:**
+  - R1 (motor decide): función pura, sin LLM.
+  - R2 (estructura, no SQL crudo): excepción legítima por sqlglot
+    AST (mismo patrón documentado en D9/D19/D20). `is_nullable` se
+    lee de campo tipado del snapshot, no de regex.
+  - R9 (pureza): sin I/O, sin estado global, sin red.
+  - R10 (tests +/-): happy path + negativos + frontera D7/D20 +
+    robustez (snapshot ausente, tabla desconocida, proyección
+    expresión, SQL inválido).
+  - R14 (sin hardcoded): cero literales de AppDB en el detector; los
+    nombres de tabla/columna se sacan del SQL y se resuelven contra
+    el snapshot.
+  - R15: esta entrada + `motor/CLAUDE.md` + `docs/patterns/not-in-
+    nullable-subquery.md` + actualización del índice del catálogo,
+    todo en el mismo PR.
+
 #### Fix D20 + D22 nuevo + fix FP D2 + registro D2/D3/D19/D20/D22 + python-multipart
 - **Autor:** Andrés Angulo. Rama `feat/D20-D22-cobertura-fixes`.
 - **Archivos:**

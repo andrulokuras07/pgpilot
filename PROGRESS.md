@@ -109,6 +109,27 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (F4+F5)
+
+### Avances
+
+#### F4 + F5 — Lista de entrevistados y guion de entrevista
+- **Autor:** Diego. Rama `feat/F4-F5-entrevistas`.
+- **Archivos:**
+  `business/guion-entrevistas.md` (nuevo, F5 — 9 preguntas de discovery),
+  `business/lista-entrevistados.md` (nuevo, F4 — 5 candidatos),
+  `business/CLAUDE.md` (nuevo, R15 — primer código en el módulo),
+  `PROGRESS.md` (esta entrada).
+- **Notas:**
+  F5: 9 preguntas enfocadas en comportamiento pasado (no intenciones).
+  Cubren contexto, dolor cuantificado, stack actual, historia concreta,
+  encaje en workflow, objeciones de seguridad, decisor y precio.
+  F4: 5 perfiles realistas para el contexto universitario en Querétaro.
+  Tabla de agendamiento incluida para trackear confirmaciones.
+- **Tests:** N/A (documentación de negocio, sin código).
+
+---
+
 ## 2026-05-13
 
 ### Avances

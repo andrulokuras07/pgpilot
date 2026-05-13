@@ -18,6 +18,8 @@ from motor.detectors import (
     detect_partial_index_opportunity,
     detect_select_star,
     detect_seq_scan_on_large_table,
+    detect_sort_spill_to_disk,
+    detect_stale_statistics,
     detect_type_mismatch,
     detect_unnecessary_cte_materialize,
 )
@@ -43,6 +45,8 @@ __all__ = [
     "KNOWN_NODE_TYPES",
     "Detection",
     "detect_seq_scan_on_large_table",
+    "detect_stale_statistics",
+    "detect_sort_spill_to_disk",
     "detect_like_leading_wildcard",
     "detect_function_in_where",
     "detect_or_across_tables",

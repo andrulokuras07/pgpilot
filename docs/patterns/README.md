@@ -15,8 +15,8 @@ archivo `.md`. Este `README.md` es el índice + la plantilla.
 |---|--------------|---------|----------|--------|
 | 1 | Seq Scan sobre tabla grande con índice disponible | [`seq-scan-on-large-table.md`](seq-scan-on-large-table.md) | `motor.detect_seq_scan_on_large_table` (C1) | ✅ Implementado |
 | 2 | Seq Scan sobre tabla grande sin índice en la columna del filtro | [`missing-index.md`](missing-index.md) | `motor.detect_missing_index` (D16) | ✅ Implementado |
-| 3 | Mismatch entre `rows estimated` y `rows actual` (stats obsoletas) | _(pendiente)_ | D2 | ⬜ Backlog |
-| 4 | Sort en disco (`external merge Disk`) | _(pendiente)_ | D3 | ⬜ Backlog |
+| 3 | Mismatch entre `rows estimated` y `rows actual` (stats obsoletas) | [`stale-statistics.md`](stale-statistics.md) | `motor.detect_stale_statistics` (D2) | ✅ Implementado |
+| 4 | Sort en disco (`external merge Disk`) | [`sort-spill-to-disk.md`](sort-spill-to-disk.md) | `motor.detect_sort_spill_to_disk` (D3) | ✅ Implementado |
 | 5 | LIKE con wildcard al inicio | [`like-leading-wildcard.md`](like-leading-wildcard.md) | `motor.detect_like_leading_wildcard` (D4) | ✅ Implementado |
 | 6 | Función no-immutable en WHERE | [`function-in-where.md`](function-in-where.md) | `motor.detect_function_in_where` (D5) | ✅ Implementado |
 | 7 | OR sobre columnas de tablas distintas | [`or-across-tables.md`](or-across-tables.md) | `motor.detect_or_across_tables` (D6) | ✅ Implementado |

@@ -109,6 +109,72 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (F13+F14)
+
+### Avances
+
+#### F13 + F14 — Plan go-to-market + diferenciador defendible
+- **Autor:** Alexander. Rama `docs/F13-F14-gtm-diferenciador`.
+- **Archivos:**
+  `business/gtm.md` (nuevo, plan F13),
+  `business/gtm.docx` (nuevo, mismo contenido en Word),
+  `business/diferenciador.md` (nuevo, análisis F14),
+  `business/diferenciador.docx` (nuevo, mismo contenido en Word),
+  `business/CLAUDE.md` (actualizado: F3/F11/F12 marcados como ✅,
+  F13/F14 agregados; estructura interna actualizada; convenciones
+  documentadas para futuras adiciones de docs de negocio),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** dos tickets empaquetados porque F14 depende de F3 y F11
+  (ya mergeados), F13 depende de F11, y ambos son entregables de
+  negocio puros que alimentan F15.
+  - **F13 (plan go-to-market):** founder-led sales + content-driven
+    inbound, no marketing pagado en los primeros 12 meses. Plan
+    paso a paso para los primeros 10 clientes con timeline mensual
+    (mes 0-1 Show HN + Dev.to, mes 2-3 outreach a 50 CTOs, mes 4-5
+    Nerdearla Buenos Aires ~15K asistentes, mes 6 conversión, mes
+    7-9 Finnosummit / Fintech Week MX, mes 10-12 cierre + caso de
+    estudio). Costo total $15K USD, LTV/CAC ≈ 17×. Estrategia
+    posterior (año 2) alimenta el plan year-by-year de `mercado.md`.
+    Cuatro riesgos listados con mitigación cada uno.
+  - **F14 (diferenciador defendible):** marco "el competidor real
+    no es pganalyze, es ChatGPT". Cuatro defensores arquitectónicos
+    (motor determinístico decide / LLM explica, sanitización pre-LLM,
+    sandbox de validación, modo offline) más un quinto comercial
+    (foco LATAM). Sección §2 lista honestamente lo que NO contamos
+    como defendible (precio, UI, "usamos IA", open source, número
+    de detectores) — alineado con el espíritu de F3. §5 explica
+    que la defensa es la combinación con shape arquitectónico, no
+    la suma de partes. §6 contiene la tabla "PgPilot vs ChatGPT"
+    que se vuelve el slide del minuto 4 del pitch.
+  - **Actualización de `business/CLAUDE.md`:** el archivo estaba
+    desactualizado (marcaba F3, F11, F12 como ⬜ pendientes cuando
+    ya estaban mergeados a main). Aprovechando R15, se actualiza
+    Estado actual y Estructura interna, y se documentan las
+    convenciones de la carpeta — específicamente la pareja
+    `.md` + `.docx` para entregables formales y el patrón de script
+    temporal para generar `.docx` (que se borra antes del commit).
+  - **Generación del .docx:** se usó un script temporal
+    `scripts/_temp_gen_gtm_diferenciador_docx.py` que se borra
+    antes del commit. Mismo patrón que F11+F12.
+- **Cumplimiento de reglas:**
+  - R15: PROGRESS.md actualizado + `business/CLAUDE.md` actualizado
+    en el mismo commit. No aplica `motor/CLAUDE.md` ni otros — F13
+    y F14 son documentación de negocio puro.
+  - Honestidad F3 propagada a F14: §2 lista 5 "diferenciadores NO
+    defendibles" en lugar de pintar todo como ventaja. §4 reconoce
+    explícitamente que el foco LATAM se erosiona si un competidor
+    decide entrar en serio al mercado.
+- **Pendiente vigilar:**
+  - F6-F8 deben validar el ICP del plan F13 (equipo 5-20 devs,
+    Postgres ≥1 TB, problema mencionado). Si los entrevistados
+    revelan otro perfil dominante, ajustar §2 de gtm.md.
+  - Las fechas de Nerdearla 2026 y Finnosummit 2026 deben
+    confirmarse con los organizadores antes de comprometer
+    presupuesto en el plan real (post Demo Day).
+  - F15 (documento consolidado) consumirá F3, F9, F10, F11, F12,
+    F13, F14. Falta F9 (problema con datos) y F10 (user persona),
+    que dependen de F6-F8.
+
 ## 2026-05-13 (F4+F5)
 
 ### Avances

@@ -8,11 +8,16 @@ Documentos de discovery, validación de mercado y preparación para el Demo Day.
 
 ## Estado actual
 
-- ✅ F4 — Lista de 5 candidatos a entrevistar
-- ✅ F5 — Guion de entrevista (9 preguntas)
-- ⬜ F3 — Investigación competitiva
+- ✅ F3 — Investigación competitiva (`competencia.md` + `.docx`)
+- ✅ F4 — Lista de 5 candidatos a entrevistar (`lista-entrevistados.md`)
+- ✅ F5 — Guion de entrevista (`guion-entrevistas.md`)
+- ✅ F11 — Modelo de pricing (`pricing.md` + `.docx`)
+- ✅ F12 — TAM/SAM/SOM (`mercado.md` + `.docx`)
+- ✅ F13 — Plan Go-to-Market (`gtm.md` + `.docx`)
+- ✅ F14 — Diferenciador defendible (`diferenciador.md` + `.docx`)
 - ⬜ F6-F8 — Entrevistas ejecutadas y documentadas
-- ⬜ F9-F14 — Definición de problema, persona, pricing, TAM/SAM/SOM, go-to-market, diferenciador
+- ⬜ F9 — Definición de problema con datos
+- ⬜ F10 — User persona detallado
 - ⬜ F15 — Documento de negocio consolidado
 
 ---
@@ -23,16 +28,45 @@ Documentos de discovery, validación de mercado y preparación para el Demo Day.
 business/
 ├── CLAUDE.md                # este archivo
 ├── README.md                # placeholder original
+├── competencia.md / .docx   # F3 — investigación competitiva
+├── lista-entrevistados.md   # F4 — 5 candidatos con criterios de selección
 ├── guion-entrevistas.md     # F5 — 9 preguntas para entrevistas de discovery
-└── lista-entrevistados.md   # F4 — 5 candidatos con criterios de selección
+├── pricing.md / .docx       # F11 — modelo de pricing (4 tiers)
+├── mercado.md / .docx       # F12 — TAM/SAM/SOM con metodología y fuentes
+├── gtm.md / .docx           # F13 — plan go-to-market (primeros 10 clientes)
+└── diferenciador.md / .docx # F14 — diferenciador defendible
 ```
+
+---
+
+## Convenciones
+
+### Documentos con entregable formal
+Los documentos que se entregan al evaluador o se citan en pitches (F3, F11, F12, F13, F14) viven como pareja `.md` + `.docx`:
+
+- **`.md`** es la fuente versionada en el repo, fácil de revisar en GitHub y editar.
+- **`.docx`** es el entregable de presentación formal (Word con tablas formateadas, encabezados, colores).
+- Ambos contienen la misma información. Si se actualiza el `.md`, hay que reflejar manualmente los cambios en el `.docx` para que no diverjan. Cada archivo `.md` lleva una "Nota de mantenimiento" al final recordándolo.
+- Los `.docx` se generan localmente con un script temporal (python-docx) que se borra antes del commit; el equipo decidió no versionar generadores de docx para mantener el repo limpio (ver decisión del 2026-05-13 en `PROGRESS.md`).
+
+### Documentos de proceso interno
+Documentos de proceso (F4 lista de candidatos, F5 guion de entrevistas, F6-F8 entrevistas) viven solo como `.md` — no necesitan entregable Word formal.
 
 ---
 
 ## Cómo extender
 
 ### Documentar una entrevista (F6-F8)
-Crear `business/entrevista-N.md` con: nombre y rol del entrevistado, fecha, respuestas resumidas por pregunta, insights principales.
+Crear `business/entrevista-N.md` con: nombre y rol del entrevistado, fecha, respuestas resumidas por pregunta, insights principales. Solo `.md`, no requiere `.docx`.
 
-### Agregar documentación de negocio
-Crear el archivo correspondiente en esta carpeta y actualizar el estado en este CLAUDE.md.
+### Agregar documentación de negocio nueva
+1. Crear el archivo `.md` correspondiente en esta carpeta.
+2. Si es entregable formal, generar también el `.docx` con un script temporal local (basado en python-docx, mismo patrón que F3/F11/F12/F13/F14). Borrar el script antes del commit.
+3. Actualizar la sección "Estado actual" de este archivo (`business/CLAUDE.md`) marcando el ticket como ✅.
+4. Actualizar la sección "Estructura interna" si el nombre del archivo es nuevo.
+5. Agregar entrada en `PROGRESS.md` (regla R15).
+
+### Actualizar contenido existente
+Si se modifica un `.md`:
+- Reflejar el cambio en el `.docx` correspondiente (regenerar o editar manualmente).
+- Si el cambio es material (precio, cifra, conclusión), agregar entrada en `PROGRESS.md` explicando qué cambió y por qué.

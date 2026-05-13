@@ -156,7 +156,12 @@ function Resultado({ respuesta, error, cargando }) {
   }
   const detections = respuesta.detections ?? [];
   const recommendations = respuesta.recommendations ?? [];
-  if (detections.length === 0 && recommendations.length === 0) {
+  const errores = respuesta.errors ?? [];
+  const parcial = Boolean(respuesta.partial);
+  const vacio = detections.length === 0 && recommendations.length === 0;
+
+  // Análisis completo y sin hallazgos → mensaje verde de "todo limpio".
+  if (vacio && !parcial) {
     return (
       <div className="cards-success">
         Sin anti-patterns detectados. PgPilot revisó el plan y no encontró
@@ -166,12 +171,43 @@ function Resultado({ respuesta, error, cargando }) {
   }
   return (
     <div className="cards-list">
+      {parcial && <BannerParcial errores={errores} />}
+      {vacio && (
+        <div className="cards-empty">
+          No se completó el análisis (ver el aviso de arriba). No hay
+          detecciones que mostrar.
+        </div>
+      )}
       {detections.map((d, i) => (
         <DetectionCard key={`det-${i}`} detection={d} />
       ))}
       {recommendations.map((r, i) => (
         <RecommendationCard key={`rec-${i}`} recommendation={r} />
       ))}
+    </div>
+  );
+}
+
+// E8: el backend devuelve resultados parciales con un flag de error
+// cuando alguna etapa del pipeline falla. Mostramos un aviso arriba de
+// las tarjetas; lo que sí se calculó (detecciones / recomendaciones
+// determinísticas) se sigue renderizando debajo.
+function BannerParcial({ errores }) {
+  return (
+    <div className="cards-warning">
+      <div className="cards-warning-title">Análisis parcial</div>
+      {errores.length > 0 ? (
+        <ul>
+          {errores.map((e, i) => (
+            <li key={`err-${i}`}>{e.message ?? "Una etapa del análisis falló."}</li>
+          ))}
+        </ul>
+      ) : (
+        <span>
+          Alguna etapa del análisis falló; los resultados pueden estar
+          incompletos.
+        </span>
+      )}
     </div>
   );
 }

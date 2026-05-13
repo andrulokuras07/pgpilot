@@ -225,6 +225,112 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### E8 — Aislamiento de errores en endpoint /analyze
+- **Autor:** (pendiente de asignar al hacer commit). Rama
+  `feat/E8-aislamiento-errores-analyze` (creada desde la HEAD de
+  `feat/E7-comparativo-enriquecido` — incluye el commit de E7).
+- **Archivos:**
+  `backend/orchestrator.py` (cada etapa de `analyze_query` envuelta en
+  `try/except`: sanitize, extracción, parser, detector, recomendador,
+  validación de sandbox, explicación/LLM; nuevos helpers `_result`,
+  `_record`, `_safe_explain`, `_fallback_explanation`; `_safe_sandbox_validate`
+  ahora distingue "sandbox no configurado" de "sandbox explotó" y
+  reporta lo segundo; `_run_explain` gana un `except Exception` final →
+  `AnalyzeError(500)` genérico; el dict devuelto incorpora `errors`/`partial`),
+  `backend/main.py` (`AnalyzeResponse` gana `errors: list[dict[str,str]]`
+  y `partial: bool`; el handler `/analyze` gana un `except Exception` →
+  `HTTPException(500, "Error interno al analizar la query.")` con detalle
+  loggeado, nunca filtrado),
+  `frontend/src/App.jsx` (componente `BannerParcial`; `Resultado` muestra
+  el banner ámbar cuando `respuesta.partial`, y maneja el caso
+  vacío+parcial sin el mensaje verde engañoso),
+  `frontend/src/Card.css` (`.cards-warning`, `.cards-warning-title`,
+  `.cards-warning ul`),
+  `tests/backend/test_orchestrator.py` (+8 tests E8: LLM roto → resultado
+  determinístico + flag [hecho-cuando], parser/detector/recomendador rotos
+  → vacío/parcial con etapa, sanitize roto → LLM omitido por R4 + plantilla,
+  sandbox no configurado ≠ error, extracción no-Postgres → 500; updates a
+  los tests existentes para el shape `errors`/`partial`),
+  `tests/backend/test_analyze.py` (+2 tests E8: propagación de `partial`/`errors`,
+  500 genérico sin stacktrace ni leak; updates al shape de las respuestas
+  vacías),
+  `backend/CLAUDE.md` (E8 en estado actual; contrato de respuesta con
+  `errors`/`partial` + ejemplo de degradación parcial; código 500 acotado;
+  sección de tests),
+  `frontend/CLAUDE.md` (E8 en estado actual; `BannerParcial` en estructura;
+  mapeo de `partial`/`errors` a UI),
+  `PROGRESS.md` (esta entrada).
+- **Notas:**
+  - **El backlog (E8):** "envolver cada etapa del orquestador (extracción,
+    parser, detector, validación, LLM) en try/except. Si una etapa falla,
+    las demás siguen y el endpoint devuelve resultados parciales con flag
+    de error. Nunca crashear el endpoint." Hecho.
+  - **Etapa "terminal" = extracción.** Sin un plan no hay nada que parsear
+    ni detectar, así que un fallo de EXPLAIN se sigue traduciendo a
+    `AnalyzeError` → 4xx (input del usuario: sintaxis, tabla inexistente,
+    read-only por R7), 504 (timeout), o 500 (lo inesperado, ahora con
+    `except Exception` que evita devolver un stack trace crudo). El resto
+    de etapas degradan a resultado parcial 200.
+  - **Forma de la respuesta:** se añadieron dos claves top-level estables:
+    `errors` (lista de `{stage, message}`, vacía en el caso normal) y
+    `partial` (`== bool(errors)`). `stage ∈ sanitize | parse | detect |
+    recommend | validate | explain`. `message` es genérico a propósito —
+    misma política que `AnalyzeError`: nada de nombres de tabla, paths ni
+    stack traces al cliente; el detalle real va a `logging` server-side
+    (`pgpilot.orchestrator` / `pgpilot.backend`).
+  - **R4 protegido en el aislamiento:** si `sanitize` revienta, `sanitized`
+    queda `None` y NINGUNA recomendación llama al LLM — todas usan la
+    plantilla determinística. Test que lo verifica: `httpx.post` jamás se
+    toca en ese escenario.
+  - **`explain_recommendation` ya absorbía** los fallos *esperables* del
+    LLM (apagado, red caída, JSON inválido, cross-validation fallida →
+    plantilla). E8 atrapa el caso que su docstring advierte que SÍ
+    propaga ("bug interno, snapshot corrupto"): se registra como etapa
+    `explain`, se cae a plantilla, y si hasta eso falla hay una
+    explicación mínima de respaldo (`_fallback_explanation`). Así las
+    detecciones y recomendaciones determinísticas siempre llegan al
+    frontend aunque el LLM (o su validación) explote.
+  - **Sandbox:** `_safe_sandbox_validate` ya atrapaba excepciones (R5),
+    pero las tragaba en silencio. Ahora "sandbox no configurado" sigue
+    siendo `verdict=None` sin error (modo válido), pero "sandbox configurado
+    que explota" añade la etapa `validate` a `errors` → `partial=true`.
+  - **Frontend:** banner ámbar arriba de las tarjetas con los `message`
+    de `errors`. Si `partial` y todo lo demás vacío (ej. parser caído),
+    se muestra el banner + nota en vez del mensaje verde "sin
+    anti-patterns" (que sería engañoso). `partial=false` → comportamiento
+    idéntico al de antes. (El estado por-validación de cada recomendación
+    queda para E9.)
+  - **Frontend build:** `vite build` OK (46 módulos).
+- **Cumplimiento de reglas:**
+  - R1: el motor sigue decidiendo. Si el detector revienta, NO inventamos
+    detecciones — devolvemos vacío + flag. El LLM nunca gana nada nuevo.
+  - R3: las salidas del LLM se siguen validando (cross-validation dentro
+    de `explain_recommendation`); E8 solo añade una red para el caso de
+    que esa capa misma explote.
+  - R4: si `sanitize` falla, el LLM no se llama (test que lo verifica).
+  - R5: el producto degrada elegante — sandbox caído, LLM caído, parser
+    caído: el endpoint responde 200 con lo que pudo y un flag, nunca
+    crashea.
+  - R8: type hints completos (`errors: list[dict[str, str]]`,
+    `partial: bool`, `sanitized: SanitizedQuery | None`, etc.).
+  - R10: 10 tests nuevos (8 en `test_orchestrator.py` + 2 en
+    `test_analyze.py`), incluido el "hecho cuando" de E8
+    (`test_analyze_query_llm_que_explota_devuelve_deterministico_y_flag`).
+  - R11: `black` + `isort` aplicados (limpio).
+  - R12: `BannerParcial` es componente funcional sin estado; CSS plano.
+  - R14: cero literales de tablas/columnas.
+  - R15: esta entrada + `backend/CLAUDE.md` + `frontend/CLAUDE.md` en el
+    mismo PR.
+- **Tests:** ✅ `pytest tests/backend/` → **38 passed** (0.2 s). Suite
+  completa `pytest -m "not integration and not llm"` → **374 passed**;
+  los 5 fallos restantes (`tests/ia/test_logs.py::…_oserror…`,
+  3× `test_in_subquery_to_exists.py`, `test_having_without_aggregate.py::test_dispara_q16…`)
+  **son pre-existentes en la HEAD de la rama E7** (verificado con
+  `git stash`) — sin relación con E8; muy probablemente diferencias de
+  Python 3.14 vs 3.11 (sqlglot, mock de OSError). Frontend `vite build`
+  ✅. Tests de integración (`tests/integration/`) no corridos (requieren
+  AppDB; sin cambios que los afecten).
+
 #### E7 — Comparativo before/after enriquecido
 - **Autor:** (pendiente de asignar al hacer commit). Rama
   `feat/E7-comparativo-enriquecido`.

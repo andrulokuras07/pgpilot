@@ -175,7 +175,13 @@ def test_analyze_query_sin_deteccion_devuelve_arrays_vacios(
         query="SELECT * FROM posts WHERE id = 1", appdb_pool=pool, snapshot=snapshot
     )
 
-    assert out == {"detections": [], "recommendations": []}
+    # E8: shape estable con `errors`/`partial`. Sin fallos → ambos vacíos.
+    assert out == {
+        "detections": [],
+        "recommendations": [],
+        "errors": [],
+        "partial": False,
+    }
 
 
 # --- happy path: detection + recommendation + explanation ---------
@@ -225,6 +231,10 @@ def test_analyze_query_con_deteccion_devuelve_estructura_completa(
     assert "public.posts" in rec["explanation"]["text"]
     assert rec["explanation"]["confidence"] > 0.0
     assert rec["explanation"]["suggested_rewrite"] is None
+
+    # E8: pipeline completa, sin etapas caídas.
+    assert out["errors"] == []
+    assert out["partial"] is False
 
 
 def test_analyze_query_con_sandbox_incluye_verdict(
@@ -316,7 +326,8 @@ def test_analyze_query_sandbox_que_explota_no_rompe_la_pipeline(
     monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
 ) -> None:
     """Si el sandbox falla (Docker caído, schema corrupto), la pipeline
-    sigue: `sandbox_verdict=None`, status 200. R5 a nivel sandbox."""
+    sigue: `sandbox_verdict=None`, status 200, y E8 marca la etapa
+    `validate` en `errors` con `partial=True`. R5 + E8 a nivel sandbox."""
     pool = FakePool(SEQ_SCAN_PLAN)
 
     def boom(*args: Any, **kwargs: Any) -> Any:
@@ -335,6 +346,33 @@ def test_analyze_query_sandbox_que_explota_no_rompe_la_pipeline(
     assert out["recommendations"][0]["sandbox_verdict"] is None
     assert out["recommendations"][0]["sandbox_reason"] is None
     assert out["recommendations"][0]["sandbox_plan_comparison"] is None
+
+    # E8: degradación parcial visible, pero la detección y la recomendación
+    # determinística siguen presentes (con su explicación).
+    assert out["partial"] is True
+    assert [e["stage"] for e in out["errors"]] == ["validate"]
+    assert len(out["detections"]) == 1
+    assert out["recommendations"][0]["create_index_sql"]
+    assert out["recommendations"][0]["explanation"]["text"]
+
+
+def test_analyze_query_sandbox_no_configurado_no_es_error(
+    snapshot: dict[str, Any],
+) -> None:
+    """Sin `sandbox_pool` (modo válido por R5), no hay verdict pero
+    tampoco hay error de etapa: `partial=False`, `errors=[]`."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+        sandbox_pool=None,
+    )
+
+    assert out["recommendations"][0]["sandbox_verdict"] is None
+    assert out["errors"] == []
+    assert out["partial"] is False
 
 
 # --- happy path: con LLM (mockeado) -------------------------------
@@ -381,6 +419,161 @@ def test_analyze_query_con_llm_real_mockeado_marca_source_llm(
     assert rec["explanation"]["source"] == "llm"
     assert "Seq Scan" in rec["explanation"]["text"]
     assert rec["explanation"]["confidence"] == 0.88
+
+
+# --- E8: aislamiento de errores por etapa -------------------------
+
+
+def test_analyze_query_llm_que_explota_devuelve_deterministico_y_flag(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """**E8 hecho-cuando**: si el LLM (la etapa de explicación) revienta de
+    forma inesperada, /analyze sigue devolviendo la detección y la
+    recomendación determinística — con la explicación de plantilla como
+    respaldo — más `partial=True` y la etapa `explain` en `errors`.
+    """
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("the LLM layer blew up unexpectedly")
+
+    # Rompemos la etapa de explicación entera (no un error 'esperable' del
+    # LLM, que `explain_recommendation` ya absorbe — un bug crudo).
+    monkeypatch.setattr("backend.orchestrator.explain_recommendation", boom)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    # Lo determinístico sobrevive intacto.
+    assert len(out["detections"]) == 1
+    assert out["detections"][0]["type"] == "seq_scan_on_large_table"
+    rec = out["recommendations"][0]
+    assert rec["create_index_sql"]
+    assert rec["justification"]
+    assert rec["expected_impact"]
+    # La explicación cae a plantilla (R5) en vez de propagar la excepción.
+    assert rec["explanation"]["source"] == "template"
+    assert rec["explanation"]["text"]
+    # Flag de degradación parcial.
+    assert out["partial"] is True
+    assert [e["stage"] for e in out["errors"]] == ["explain"]
+    # El mensaje al frontend es genérico (no filtra el detalle interno).
+    assert "blew up" not in out["errors"][0]["message"]
+
+
+def test_analyze_query_parser_que_explota_devuelve_vacio_con_flag(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Si el parser del plan revienta, no hay nada que detectar: arrays
+    vacíos + `partial=True` + etapa `parse` en `errors`. No crashea."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError("plan JSON has an unexpected shape")
+
+    monkeypatch.setattr("backend.orchestrator.parse_explain", boom)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    assert out["detections"] == []
+    assert out["recommendations"] == []
+    assert out["partial"] is True
+    assert [e["stage"] for e in out["errors"]] == ["parse"]
+
+
+def test_analyze_query_detector_que_explota_devuelve_vacio_con_flag(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Si el detector revienta, no hay detecciones: arrays vacíos +
+    `partial=True` + etapa `detect`. R1 sigue intacto (el detector es
+    quien decide; si no puede, no inventamos nada)."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("detector hit a corrupt snapshot")
+
+    monkeypatch.setattr("backend.orchestrator.detect_seq_scan_on_large_table", boom)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    assert out["detections"] == []
+    assert out["recommendations"] == []
+    assert out["partial"] is True
+    assert [e["stage"] for e in out["errors"]] == ["detect"]
+
+
+def test_analyze_query_recomendador_que_explota_mantiene_deteccion(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Si el recomendador revienta, la detección sobrevive pero no hay
+    recomendaciones: `partial=True` + etapa `recommend`."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("recommender failed to compute selectivity")
+
+    monkeypatch.setattr("backend.orchestrator.recommend_for_seq_scan_on_large_table", boom)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    assert len(out["detections"]) == 1
+    assert out["recommendations"] == []
+    assert out["partial"] is True
+    assert [e["stage"] for e in out["errors"]] == ["recommend"]
+
+
+def test_analyze_query_sanitize_que_explota_omite_llm_pero_sigue(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Si la sanitización revienta, NO se llama al LLM (R4 — no podemos
+    arriesgar mandarle literales): las explicaciones caen a plantilla y
+    la etapa `sanitize` aparece en `errors`. La detección/recomendación
+    determinística sigue presente."""
+    monkeypatch.setenv("LLM_ENABLED", "true")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    llm_calls: list[Any] = []
+
+    def fake_post(*args: Any, **kwargs: Any) -> Any:
+        llm_calls.append((args, kwargs))
+        raise AssertionError("el LLM no debe llamarse si la sanitización falló")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("sanitizer regex exploded")
+
+    monkeypatch.setattr("backend.orchestrator.sanitize", boom)
+
+    pool = FakePool(SEQ_SCAN_PLAN)
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    assert llm_calls == []  # R4: el LLM jamás se tocó
+    assert len(out["detections"]) == 1
+    rec = out["recommendations"][0]
+    assert rec["create_index_sql"]
+    assert rec["explanation"]["source"] == "template"
+    assert out["partial"] is True
+    assert [e["stage"] for e in out["errors"]] == ["sanitize"]
 
 
 # --- mapeo de errores Postgres → AnalyzeError ----------------------
@@ -431,3 +624,16 @@ def test_run_explain_sin_filas_levanta_500(snapshot: dict[str, Any]) -> None:
         analyze_query(query="SELECT 1", appdb_pool=pool, snapshot=snapshot)
 
     assert exc_info.value.status_code == 500
+
+
+def test_run_explain_error_inesperado_traduce_a_500(snapshot: dict[str, Any]) -> None:
+    """E8: un fallo NO-Postgres en la extracción (pool roto, timeout del
+    pool, etc.) no propaga un stack trace crudo — se traduce a un 500
+    genérico, igual que el resto de la etapa de extracción."""
+    pool = FakePool(RuntimeError("connection pool is broken"))
+
+    with pytest.raises(AnalyzeError) as exc_info:
+        analyze_query(query="SELECT 1", appdb_pool=pool, snapshot=snapshot)
+
+    assert exc_info.value.status_code == 500
+    assert "broken" not in exc_info.value.message  # no filtra el detalle interno

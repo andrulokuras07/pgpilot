@@ -167,23 +167,39 @@ class AnalyzeRequest(BaseModel):
 class AnalyzeResponse(BaseModel):
     """Forma de la respuesta de /analyze.
 
-    Estable desde B13 al nivel de claves top-level. Lo que C9 agregó es
-    el contenido enriquecido de cada item (recommendations ahora trae
-    `explanation`, `sandbox_verdict`, `create_index_sql`, etc.). Ver
-    `backend/orchestrator.analyze_query` para el shape exacto de cada
-    elemento.
+    Estable desde B13 al nivel de claves top-level. C9 enriqueció el
+    contenido de cada item (recommendations trae `explanation`,
+    `sandbox_verdict`, `create_index_sql`, etc.). E8 añadió `errors` y
+    `partial`: cuando alguna etapa del pipeline falla, el endpoint
+    devuelve lo que sí pudo calcular y marca la degradación en vez de
+    crashear. Ver `backend/orchestrator.analyze_query` para el shape
+    exacto de cada elemento.
     """
 
     detections: list[dict[str, Any]] = Field(default_factory=list)
     recommendations: list[dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, str]] = Field(
+        default_factory=list,
+        description=(
+            "Etapas del pipeline que fallaron (degradación parcial, E8). "
+            "Cada entrada: {stage, message}. Vacío en el caso normal."
+        ),
+    )
+    partial: bool = Field(
+        default=False,
+        description="True si alguna etapa del pipeline falló y la respuesta es parcial (E8).",
+    )
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest, request: Request) -> AnalyzeResponse:
     """Orquesta la pipeline completa para una query del frontend.
 
-    503 si AppDB no se inicializó al startup. 4xx/5xx si Postgres
-    rechaza la query (ver `orchestrator._run_explain` para el mapeo).
+    503 si AppDB no se inicializó al startup. 4xx/504 si Postgres
+    rechaza la query o el EXPLAIN expira (ver `orchestrator._run_explain`
+    para el mapeo). 200 con `partial=true` cuando alguna etapa interna
+    falló pero la pipeline siguió (E8). 500 genérico (sin stack trace,
+    detalle loggeado) si algo inesperado revienta fuera del orquestador.
     """
     appdb_pool = getattr(request.app.state, "appdb_pool", None)
     snapshot = getattr(request.app.state, "snapshot", None)
@@ -207,10 +223,16 @@ def analyze(req: AnalyzeRequest, request: Request) -> AnalyzeResponse:
             sandbox_pool=sandbox_pool,
             request_id=request_id,
         )
+        return AnalyzeResponse(**body)
     except AnalyzeError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
-
-    return AnalyzeResponse(**body)
+    except Exception as exc:  # noqa: BLE001 — E8: red de seguridad final
+        # El orquestador ya aísla cada etapa, pero un bug fuera de su
+        # alcance (construcción del response model, un import, etc.) no
+        # debe devolver un stack trace ni colgar el endpoint. El detalle
+        # se loggea; el cliente ve un 500 genérico.
+        log.exception("Error no manejado en /analyze (request_id=%s): %r", request_id, exc)
+        raise HTTPException(status_code=500, detail="Error interno al analizar la query.") from exc
 
 
 class WorkloadEntry(BaseModel):
@@ -255,9 +277,7 @@ async def workload(request: Request) -> WorkloadResponse:
         return WorkloadResponse(top=[])
 
     scored = score_workload(entries, top_n=10)
-    return WorkloadResponse(
-        top=[WorkloadEntry(**s.__dict__) for s in scored]
-    )
+    return WorkloadResponse(top=[WorkloadEntry(**s.__dict__) for s in scored])
 
 
 @app.get("/health")

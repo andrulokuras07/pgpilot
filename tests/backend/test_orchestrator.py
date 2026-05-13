@@ -245,6 +245,8 @@ def test_analyze_query_con_sandbox_incluye_verdict(
             node_type_after="Index Scan",
             cost_before=12345.0,
             cost_after=42.0,
+            plan_rows_before=500_000,
+            plan_rows_after=2_500,
         )
 
     monkeypatch.setattr("backend.orchestrator.validate_index_recommendation", fake_validate)
@@ -262,14 +264,18 @@ def test_analyze_query_con_sandbox_incluye_verdict(
     assert rec["sandbox_verdict"] == "validated"
     assert "Index Scan" in rec["sandbox_reason"]
 
-    # C11: el comparativo lleva tipos de nodo y costos para que el
-    # frontend pueda renderizar "Seq Scan (cost=12345) → Index Scan (cost=42)".
+    # C11 + E7: el comparativo lleva tipos de nodo, costos y filas
+    # estimadas para que el frontend pueda renderizar "Seq Scan
+    # (cost=12345, ~500k filas) → Index Scan (cost=42, ~2.5k filas)" y
+    # derivar el resumen ejecutivo.
     comparison = rec["sandbox_plan_comparison"]
     assert comparison is not None
     assert comparison["node_type_before"] == "Seq Scan"
     assert comparison["node_type_after"] == "Index Scan"
     assert comparison["cost_before"] == 12345.0
     assert comparison["cost_after"] == 42.0
+    assert comparison["plan_rows_before"] == 500_000
+    assert comparison["plan_rows_after"] == 2_500
 
 
 def test_analyze_query_sandbox_skipped_no_signal_no_emite_comparison(

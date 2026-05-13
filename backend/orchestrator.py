@@ -207,12 +207,20 @@ def _reason_or_none(v: ValidationResult | None) -> str | None:
 
 
 def _plan_comparison_or_none(v: ValidationResult | None) -> dict[str, Any] | None:
-    """Empaqueta el contraste antes/después que el frontend usa para C11.
+    """Empaqueta el contraste antes/después que el frontend usa para C11 + E7.
 
     `None` cuando no hubo validación de sandbox (pool ausente o explosión
     atrapada por R5) o cuando la validación no produjo datos comparables
     (ej. `verdict="skipped_no_sandbox_signal"` sobre una recomendación
     de ANALYZE — `node_type_before/after` quedan `None`).
+
+    El sub-objeto lleva, por corrida, el tipo de nodo de scan sobre la
+    tabla, su `total_cost` y `plan_rows` (filas estimadas por el
+    planner). El frontend (E7) deriva de aquí el resumen ejecutivo
+    ("redujo costo estimado de X a Y (Zx mejora)") y la transición de
+    tipo de nodo. No incluimos tiempos: el EXPLAIN del sandbox corre
+    sin `ANALYZE` (tablas vacías por R6 — un `EXPLAIN ANALYZE` no
+    informaría), así que no hay tiempo real que reportar.
     """
     if v is None:
         return None
@@ -223,6 +231,8 @@ def _plan_comparison_or_none(v: ValidationResult | None) -> dict[str, Any] | Non
         "node_type_after": v.node_type_after,
         "cost_before": v.cost_before,
         "cost_after": v.cost_after,
+        "plan_rows_before": v.plan_rows_before,
+        "plan_rows_after": v.plan_rows_after,
     }
 
 

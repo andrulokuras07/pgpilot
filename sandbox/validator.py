@@ -72,6 +72,17 @@ class ValidationResult:
     `node_type_before`/`_after` son los tipos del nodo de scan que
     afecta `table` en cada plan, o `None` si la query no lo tocó (caso
     raro, se trata como `discarded`).
+
+    `cost_before`/`cost_after` y `plan_rows_before`/`plan_rows_after`
+    son el `total_cost` y el `plan_rows` (filas estimadas por el
+    planner) de ese mismo nodo en cada corrida. Alimentan el
+    comparativo enriquecido del frontend (C11 + E7) y los logs;
+    **no participan en el veredicto** — el discriminador es el tipo de
+    nodo (las tablas del sandbox están vacías por R6, así que costo y
+    filas absolutas no representan producción). No exponemos tiempos:
+    el EXPLAIN del sandbox corre sin `ANALYZE` (tablas vacías → un
+    `EXPLAIN ANALYZE` no informaría), así que no hay tiempo real que
+    mostrar.
     """
 
     verdict: ValidationVerdict
@@ -80,6 +91,8 @@ class ValidationResult:
     node_type_after: str | None
     cost_before: float | None
     cost_after: float | None
+    plan_rows_before: int | None = None
+    plan_rows_after: int | None = None
 
 
 def validate_index_recommendation(
@@ -117,6 +130,8 @@ def validate_index_recommendation(
             node_type_after=None,
             cost_before=None,
             cost_after=None,
+            plan_rows_before=None,
+            plan_rows_after=None,
         )
 
     schema_name = setup_sandbox_schema(pool, snapshot, schema_name=schema_name)
@@ -179,6 +194,8 @@ def validate_index_recommendation(
                 node_type_after=None,
                 cost_before=None,
                 cost_after=None,
+                plan_rows_before=None,
+                plan_rows_after=None,
             )
 
         return verdict_from_plans(plan_before, plan_after, recommendation.table)
@@ -205,6 +222,8 @@ def verdict_from_plans(
     type_after = node_after.node_type if node_after else None
     cost_before = node_before.total_cost if node_before else None
     cost_after = node_after.total_cost if node_after else None
+    rows_before = node_before.plan_rows if node_before else None
+    rows_after = node_after.plan_rows if node_after else None
 
     if node_before is None or node_after is None:
         return ValidationResult(
@@ -214,6 +233,8 @@ def verdict_from_plans(
             node_type_after=type_after,
             cost_before=cost_before,
             cost_after=cost_after,
+            plan_rows_before=rows_before,
+            plan_rows_after=rows_after,
         )
 
     # Caso ideal: Seq Scan → Index/Bitmap.
@@ -228,6 +249,8 @@ def verdict_from_plans(
             node_type_after=type_after,
             cost_before=cost_before,
             cost_after=cost_after,
+            plan_rows_before=rows_before,
+            plan_rows_after=rows_after,
         )
 
     # Mismo tipo de nodo: el planner sigue ignorando el índice.
@@ -243,6 +266,8 @@ def verdict_from_plans(
             node_type_after=type_after,
             cost_before=cost_before,
             cost_after=cost_after,
+            plan_rows_before=rows_before,
+            plan_rows_after=rows_after,
         )
 
     # Cambio de nodo pero a algo que no es Index/Bitmap: caso raro,
@@ -257,6 +282,8 @@ def verdict_from_plans(
         node_type_after=type_after,
         cost_before=cost_before,
         cost_after=cost_after,
+        plan_rows_before=rows_before,
+        plan_rows_after=rows_after,
     )
 
 

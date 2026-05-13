@@ -9,6 +9,11 @@ seq scan devuelve un objeto con detección, recomendación validada, y
 explicación del LLM") se cubre acá en su forma más fuerte: la pipeline
 con un plan que dispara C1, snapshot con tabla grande, sandbox que
 valida, LLM que responde válido → todos los campos llenos.
+
+Actualizado para la arquitectura multi-detector: el orquestador ahora
+corre los 18 detectores del motor, cada uno aislado (E8). Los tests
+usan queries sin `SELECT *` para evitar que D9 dispare como ruido,
+salvo cuando se quiere probar detección múltiple explícitamente.
 """
 
 from __future__ import annotations
@@ -169,10 +174,13 @@ def _autouse_disable_llm(disable_llm: None) -> None:
 def test_analyze_query_sin_deteccion_devuelve_arrays_vacios(
     snapshot: dict[str, Any],
 ) -> None:
+    """Query con Index Scan y sin SELECT * → ningún detector dispara."""
     pool = FakePool(INDEX_SCAN_PLAN)
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE id = 1", appdb_pool=pool, snapshot=snapshot
+        query="SELECT id FROM posts WHERE id = 1",
+        appdb_pool=pool,
+        snapshot=snapshot,
     )
 
     # E8: shape estable con `errors`/`partial`. Sin fallos → ambos vacíos.
@@ -192,26 +200,30 @@ def test_analyze_query_con_deteccion_devuelve_estructura_completa(
 ) -> None:
     """**C9 hecho-cuando**: query con seq scan → detección, recomendación
     validada, explicación. Sin LLM (LLM_ENABLED=false), la prosa viene de
-    plantilla — sigue cumpliendo el contrato."""
+    plantilla — sigue cumpliendo el contrato.
+
+    Usa query sin SELECT * para aislar solo C1."""
     pool = FakePool(SEQ_SCAN_PLAN)
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
     )
 
-    # Detección
+    # Detección — solo C1 dispara con esta query
     assert len(out["detections"]) == 1
     det = out["detections"][0]
     assert det["type"] == "seq_scan_on_large_table"
+    assert det["code"] == "C1"
     assert det["found"] is True
     assert det["confidence"] == 1.0
     assert det["evidence"]["matches"][0]["table"] == "public.posts"
 
-    # Recomendación con todos los campos contractuales
-    assert len(out["recommendations"]) == 1
-    rec = out["recommendations"][0]
+    # Recomendación formal (C1 → analyze, porque el índice ya existe)
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert len(formal_recs) == 1
+    rec = formal_recs[0]
     assert rec["kind"] == "analyze"  # índice ya existe → ANALYZE, no CREATE
     assert rec["table"] == "public.posts"
     assert rec["column"] == "author_id"
@@ -235,6 +247,31 @@ def test_analyze_query_con_deteccion_devuelve_estructura_completa(
     # E8: pipeline completa, sin etapas caídas.
     assert out["errors"] == []
     assert out["partial"] is False
+
+
+def test_analyze_query_multiple_detectores_disparan(
+    snapshot: dict[str, Any],
+) -> None:
+    """Query con SELECT * + Seq Scan dispara C1 y D9. Verifica que el
+    orquestador emite ambas detecciones y combina recomendaciones
+    formales (C1) con findings (D9)."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    # Al menos C1 y D9 deben disparar
+    codes = {d["code"] for d in out["detections"]}
+    assert "C1" in codes
+    assert "D9" in codes
+
+    # Debe haber recomendaciones formales Y findings
+    kinds = {r["kind"] for r in out["recommendations"]}
+    assert "analyze" in kinds or "create_index" in kinds  # formal de C1
+    assert "finding" in kinds  # D9 sin recomendador → finding
 
 
 def test_analyze_query_con_sandbox_incluye_verdict(
@@ -264,13 +301,16 @@ def test_analyze_query_con_sandbox_incluye_verdict(
     sentinel_sandbox = object()
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
         sandbox_pool=sentinel_sandbox,
     )
 
-    rec = out["recommendations"][0]
+    # First formal recommendation (C1)
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert len(formal_recs) >= 1
+    rec = formal_recs[0]
     assert rec["sandbox_verdict"] == "validated"
     assert "Index Scan" in rec["sandbox_reason"]
 
@@ -311,13 +351,15 @@ def test_analyze_query_sandbox_skipped_no_signal_no_emite_comparison(
     monkeypatch.setattr("backend.orchestrator.validate_index_recommendation", fake_validate)
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
         sandbox_pool=object(),
     )
 
-    rec = out["recommendations"][0]
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert len(formal_recs) >= 1
+    rec = formal_recs[0]
     assert rec["sandbox_verdict"] == "skipped_no_sandbox_signal"
     assert rec["sandbox_plan_comparison"] is None
 
@@ -336,24 +378,25 @@ def test_analyze_query_sandbox_que_explota_no_rompe_la_pipeline(
     monkeypatch.setattr("backend.orchestrator.validate_index_recommendation", boom)
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
         sandbox_pool=object(),  # truthy → activa el path
     )
 
-    assert len(out["recommendations"]) == 1
-    assert out["recommendations"][0]["sandbox_verdict"] is None
-    assert out["recommendations"][0]["sandbox_reason"] is None
-    assert out["recommendations"][0]["sandbox_plan_comparison"] is None
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert len(formal_recs) >= 1
+    assert formal_recs[0]["sandbox_verdict"] is None
+    assert formal_recs[0]["sandbox_reason"] is None
+    assert formal_recs[0]["sandbox_plan_comparison"] is None
 
     # E8: degradación parcial visible, pero la detección y la recomendación
     # determinística siguen presentes (con su explicación).
     assert out["partial"] is True
-    assert [e["stage"] for e in out["errors"]] == ["validate"]
-    assert len(out["detections"]) == 1
-    assert out["recommendations"][0]["create_index_sql"]
-    assert out["recommendations"][0]["explanation"]["text"]
+    assert "validate" in [e["stage"] for e in out["errors"]]
+    assert len(out["detections"]) >= 1
+    assert formal_recs[0]["create_index_sql"]
+    assert formal_recs[0]["explanation"]["text"]
 
 
 def test_analyze_query_sandbox_no_configurado_no_es_error(
@@ -364,13 +407,14 @@ def test_analyze_query_sandbox_no_configurado_no_es_error(
     pool = FakePool(SEQ_SCAN_PLAN)
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
         sandbox_pool=None,
     )
 
-    assert out["recommendations"][0]["sandbox_verdict"] is None
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert formal_recs[0]["sandbox_verdict"] is None
     assert out["errors"] == []
     assert out["partial"] is False
 
@@ -410,12 +454,14 @@ def test_analyze_query_con_llm_real_mockeado_marca_source_llm(
 
     pool = FakePool(SEQ_SCAN_PLAN)
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
     )
 
-    rec = out["recommendations"][0]
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert len(formal_recs) >= 1
+    rec = formal_recs[0]
     assert rec["explanation"]["source"] == "llm"
     assert "Seq Scan" in rec["explanation"]["text"]
     assert rec["explanation"]["confidence"] == 0.88
@@ -442,15 +488,20 @@ def test_analyze_query_llm_que_explota_devuelve_deterministico_y_flag(
     monkeypatch.setattr("backend.orchestrator.explain_recommendation", boom)
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
     )
 
     # Lo determinístico sobrevive intacto.
-    assert len(out["detections"]) == 1
-    assert out["detections"][0]["type"] == "seq_scan_on_large_table"
-    rec = out["recommendations"][0]
+    assert len(out["detections"]) >= 1
+    c1_dets = [d for d in out["detections"] if d["code"] == "C1"]
+    assert len(c1_dets) == 1
+    assert c1_dets[0]["type"] == "seq_scan_on_large_table"
+
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert len(formal_recs) >= 1
+    rec = formal_recs[0]
     assert rec["create_index_sql"]
     assert rec["justification"]
     assert rec["expected_impact"]
@@ -459,9 +510,10 @@ def test_analyze_query_llm_que_explota_devuelve_deterministico_y_flag(
     assert rec["explanation"]["text"]
     # Flag de degradación parcial.
     assert out["partial"] is True
-    assert [e["stage"] for e in out["errors"]] == ["explain"]
+    assert "explain" in [e["stage"] for e in out["errors"]]
     # El mensaje al frontend es genérico (no filtra el detalle interno).
-    assert "blew up" not in out["errors"][0]["message"]
+    explain_errors = [e for e in out["errors"] if e["stage"] == "explain"]
+    assert "blew up" not in explain_errors[0]["message"]
 
 
 def test_analyze_query_parser_que_explota_devuelve_vacio_con_flag(
@@ -477,7 +529,7 @@ def test_analyze_query_parser_que_explota_devuelve_vacio_con_flag(
     monkeypatch.setattr("backend.orchestrator.parse_explain", boom)
 
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
     )
@@ -488,21 +540,57 @@ def test_analyze_query_parser_que_explota_devuelve_vacio_con_flag(
     assert [e["stage"] for e in out["errors"]] == ["parse"]
 
 
-def test_analyze_query_detector_que_explota_devuelve_vacio_con_flag(
+def test_analyze_query_un_detector_que_explota_no_mata_a_los_demas(
     monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
 ) -> None:
-    """Si el detector revienta, no hay detecciones: arrays vacíos +
-    `partial=True` + etapa `detect`. R1 sigue intacto (el detector es
-    quien decide; si no puede, no inventamos nada)."""
+    """E8 por detector: si C1 explota, los demás detectores siguen
+    corriendo. Con SELECT *, D9 debería disparar normalmente aunque
+    C1 haya fallado. El error de C1 aparece en `errors`."""
     pool = FakePool(SEQ_SCAN_PLAN)
+
+    import backend.orchestrator as orch
 
     def boom(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("detector hit a corrupt snapshot")
 
-    monkeypatch.setattr("backend.orchestrator.detect_seq_scan_on_large_table", boom)
+    # Reemplazar solo C1 en _DETECTORS (las refs se capturan al import)
+    patched = [(code, boom if code == "C1" else fn, sql) for code, fn, sql in orch._DETECTORS]
+    monkeypatch.setattr(orch, "_DETECTORS", patched)
 
     out = analyze_query(
         query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    # C1 falló pero D9 debería haber disparado (SELECT *)
+    assert out["partial"] is True
+    assert "detect" in [e["stage"] for e in out["errors"]]
+
+    # D9 sigue viva — hay al menos una detección
+    codes = {d["code"] for d in out["detections"]}
+    assert "D9" in codes
+    assert "C1" not in codes  # C1 explotó, no debería estar
+
+
+def test_analyze_query_todos_detectores_explotan_devuelve_vacio(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Si TODOS los detectores explotan, no hay detecciones: arrays
+    vacíos + partial=True + detect en errors."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    import backend.orchestrator as orch
+
+    # Reemplazar _DETECTORS con una lista donde todo explota
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("everything is broken")
+
+    broken_detectors = [(code, boom, sql) for code, _, sql in orch._DETECTORS]
+    monkeypatch.setattr(orch, "_DETECTORS", broken_detectors)
+
+    out = analyze_query(
+        query="SELECT id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
     )
@@ -510,20 +598,21 @@ def test_analyze_query_detector_que_explota_devuelve_vacio_con_flag(
     assert out["detections"] == []
     assert out["recommendations"] == []
     assert out["partial"] is True
-    assert [e["stage"] for e in out["errors"]] == ["detect"]
+    assert "detect" in [e["stage"] for e in out["errors"]]
 
 
 def test_analyze_query_recomendador_que_explota_mantiene_deteccion(
     monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
 ) -> None:
     """Si el recomendador revienta, la detección sobrevive pero no hay
-    recomendaciones: `partial=True` + etapa `recommend`."""
+    recomendaciones formales: `partial=True` + etapa `recommend`.
+    Los findings de detectores sin recomendador sí aparecen."""
     pool = FakePool(SEQ_SCAN_PLAN)
 
     def boom(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("recommender failed to compute selectivity")
 
-    monkeypatch.setattr("backend.orchestrator.recommend_for_seq_scan_on_large_table", boom)
+    monkeypatch.setattr("backend.orchestrator.recommend", boom)
 
     out = analyze_query(
         query="SELECT * FROM posts WHERE author_id = 42",
@@ -531,10 +620,15 @@ def test_analyze_query_recomendador_que_explota_mantiene_deteccion(
         snapshot=snapshot,
     )
 
-    assert len(out["detections"]) == 1
-    assert out["recommendations"] == []
+    assert len(out["detections"]) >= 1
+    # Formal recs vacías (recommend() explotó)
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert formal_recs == []
+    # Findings de D9 etc. sí aparecen (no dependen del recomendador)
+    findings = [r for r in out["recommendations"] if r["kind"] == "finding"]
+    assert len(findings) >= 1  # al menos D9
     assert out["partial"] is True
-    assert [e["stage"] for e in out["errors"]] == ["recommend"]
+    assert "recommend" in [e["stage"] for e in out["errors"]]
 
 
 def test_analyze_query_sanitize_que_explota_omite_llm_pero_sigue(
@@ -562,18 +656,57 @@ def test_analyze_query_sanitize_que_explota_omite_llm_pero_sigue(
 
     pool = FakePool(SEQ_SCAN_PLAN)
     out = analyze_query(
-        query="SELECT * FROM posts WHERE author_id = 42",
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
         appdb_pool=pool,
         snapshot=snapshot,
     )
 
     assert llm_calls == []  # R4: el LLM jamás se tocó
-    assert len(out["detections"]) == 1
-    rec = out["recommendations"][0]
+    assert len(out["detections"]) >= 1
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    assert len(formal_recs) >= 1
+    rec = formal_recs[0]
     assert rec["create_index_sql"]
     assert rec["explanation"]["source"] == "template"
     assert out["partial"] is True
-    assert [e["stage"] for e in out["errors"]] == ["sanitize"]
+    assert "sanitize" in [e["stage"] for e in out["errors"]]
+
+
+# --- findings (detectores sin recomendador) ------------------------
+
+
+def test_finding_tiene_estructura_correcta(
+    snapshot: dict[str, Any],
+) -> None:
+    """Un finding (detector sin recomendador) tiene los campos necesarios
+    para que el frontend lo rendere sin romperse."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    findings = [r for r in out["recommendations"] if r["kind"] == "finding"]
+    assert len(findings) >= 1  # al menos D9 por SELECT *
+
+    f = findings[0]
+    # Campos que el frontend espera
+    assert "kind" in f
+    assert "table" in f
+    assert "column" in f
+    assert "create_index_sql" in f  # puede estar vacío
+    assert "justification" in f
+    assert "expected_impact" in f
+    assert "selectivity" in f  # None para findings
+    assert "sandbox_verdict" in f  # None para findings
+    assert "sandbox_plan_comparison" in f  # None para findings
+    assert "explanation" in f
+    assert f["explanation"]["source"] == "template"
+    assert f["explanation"]["text"]  # no vacío
+    assert f["sandbox_verdict"] is None
+    assert f["sandbox_plan_comparison"] is None
 
 
 # --- mapeo de errores Postgres → AnalyzeError ----------------------

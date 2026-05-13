@@ -80,6 +80,17 @@ causalidad). Frontera con D18: D2 dispara solo en scans; el error de
 cardinalidad en *joins* causado por correlación entre columnas es
 competencia de D18, que recomienda `CREATE STATISTICS` multi-columna.
 
+**Fix 2026-05-13 (scan bajo LIMIT):** D2 ahora propaga un flag
+`under_limit` mientras recorre el plan y se abstiene en scans cuyo
+ancestro es un nodo `Limit`. Postgres push-down detiene el scan
+cuando el LIMIT está saciado, así que `actual_rows` refleja el cap
+del LIMIT, no el universo real de filas que match'ean. Comparar
+`plan_rows` contra ese valor truncado producía FP en queries sanas
+como `SELECT … FROM tags ORDER BY x LIMIT 10` (S05 de la suite
+anti-FP). El recorrido usa un walker propio en vez de `find_nodes`
+para llevar el contexto del LIMIT (PlanNode es frozen, sin punteros
+al padre).
+
 ### `detect_sort_spill_to_disk(plan, snapshot) -> Detection`
 Detector D3. Dispara en nodos `Sort` con `sort_space_type == "Disk"`
 (campo authoritativo emitido por Postgres). Fallback defensivo: si por
@@ -246,14 +257,27 @@ HAVING). Confianza 0.9.
 
 ### `detect_in_subquery_to_exists(plan, snapshot, *, sql=None) -> Detection`
 Detector D20. Usa firma extendida con `sql=`. Detecta
-`col IN (SELECT ...)` no correlacionados cuando el plan confirma la
-señal con un nodo Semi Join (`Hash Join` / `Nested Loop` / `Merge Join`
-con `join_type="Semi"`). Las dos señales son obligatorias: si no hay
-Semi Join en el plan, D20 no dispara (evita FP sobre tablas pequeñas).
-La correlación se verifica buscando referencias calificadas
-(`tabla.columna`) de las tablas externas dentro de la subquery.
-La recomendación es reescribir como `WHERE EXISTS (SELECT 1 ...)`.
-Cada match incluye `column`, `inner_table`, `has_semi_join_in_plan` y
+`col IN (SELECT ...)` no correlacionados cuando el plan confirma que
+el planner gastó trabajo en resolver la forma IN. **Acepta dos
+variantes estructurales del plan** (cualquiera satisface la señal):
+
+1. **Semi Join:** `Hash Join` / `Nested Loop` / `Merge Join` con
+   `join_type="Semi"`. La forma "limpia" cuando el planner detecta
+   que el IN es semánticamente un Semi Join.
+2. **Aggregate descendiente bajo un join:** el planner dedupó la
+   salida de la subquery con un HashAggregate antes del join. Q17
+   real en AppDB v1 produce esta forma (`Nested Loop Inner` con
+   `Aggregate` bajo el lado outer en lugar de Semi Join). El
+   `Aggregate` aquí no proviene de un GROUP BY del usuario; esos
+   quedan POR ENCIMA del join, no debajo.
+
+Las dos señales (SQL + alguna del plan) son obligatorias: sin SQL o
+sin señal del plan, D20 se abstiene. La correlación se verifica
+buscando referencias calificadas (`tabla.columna`) de las tablas
+externas dentro de la subquery. La recomendación es reescribir como
+`WHERE EXISTS (SELECT 1 ...)`. Cada match incluye `column`,
+`inner_table`, `has_in_signal_in_plan` (renombrado desde
+`has_semi_join_in_plan` para reflejar la dualidad) y
 `suggested_rewrite`. Confianza 0.9.
 
 **Limitaciones conocidas:**
@@ -265,6 +289,41 @@ Cada match incluye `column`, `inner_table`, `has_semi_join_in_plan` y
 - Nota de sqlglot: `IN (SELECT ...)` se representa como
   `In(query=Subquery(this=Select(...)))` — el Select real está en
   `subquery_node.this`, no en `subquery_node.expressions`.
+- La segunda variante del plan (Aggregate bajo join) podría aparecer
+  por razones distintas a un IN (e.g. subconsulta materializada en el
+  FROM con GROUP BY). El requisito SQL (`IN (SELECT ...)` no
+  correlacionado) previene los FP correspondientes.
+
+### `detect_count_star_full_table(plan, snapshot) -> Detection`
+Detector D22. Estructural puro. Dispara cuando:
+1. La raíz es `Aggregate` con `strategy="Plain"` y sin `group_key`.
+2. No hay joins (`Nested Loop` / `Hash Join` / `Merge Join`) en el
+   subárbol.
+3. En el subárbol existe al menos un scan (`Seq Scan`, `Index Scan`,
+   `Index Only Scan`, `Bitmap Heap Scan`) sobre **una sola** relación
+   y ninguno tiene `filter`, `index_cond` ni `recheck_cond`.
+4. La relación tiene `estimated_rows >= LARGE_TABLE_MIN_ROWS` en
+   `snapshot["sizes"]`.
+
+Cubre `SELECT count(*) FROM tabla_grande` (Q20) y también
+`sum`/`avg`/`max`/`min` sin WHERE — el plan es estructuralmente
+idéntico. Cada match incluye `table`, `estimated_rows`,
+`scan_node_type` y `suggested_alternatives` (tupla con
+`pg_class.reltuples`, tabla de contadores, o filtrar la query).
+Confianza 0.95.
+
+**Limitaciones conocidas:**
+- Aplica también a `sum/avg/max/min` sin WHERE, no solo a `count(*)`.
+  El plan es idéntico; la prosa del LLM debe moderar la recomendación
+  de `pg_class.reltuples` cuando no es intercambiable.
+- Si Postgres usa `Index Only Scan` con visibility map al 100% (tabla
+  append-only con `VACUUM` reciente), el costo real baja
+  significativamente. El detector sigue disparando — la alternativa
+  `pg_class.reltuples` sigue siendo más barata.
+- No persigue queries con `count(DISTINCT col)` específicamente; el
+  plan podría tener un `Aggregate Hashed` que sí matchea la
+  condición (1) — pero `group_key` quedaría vacío y `Strategy` no
+  sería `Plain`. Si en el futuro encontramos un caso real, ajustar.
 
 ### `detect_cardinality_misestimate(plan, snapshot) -> Detection`
 Detector D18. Recorre joins (`Hash Join`, `Merge Join`, `Nested
@@ -690,7 +749,8 @@ motor/
 │   ├── partial_index_opportunity.py     # D17
 │   ├── cardinality_misestimate.py       # D18
 │   ├── having_without_aggregate.py      # D19
-│   └── in_subquery_to_exists.py        # D20
+│   ├── in_subquery_to_exists.py        # D20
+│   └── count_star_full_table.py         # D22
 ├── recommender.py  # Recommendation + recommenders por detector (C2 + D13)
 └── CLAUDE.md       # este archivo
 ```

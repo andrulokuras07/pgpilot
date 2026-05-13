@@ -1,8 +1,8 @@
 """Tests del detector D3 — Sort en disco.
- 
+
 Criterio del backlog:
     Hecho cuando: detector pasa test, documentado.
- 
+
 Cubre:
 - Happy path: `Sort Space Type: Disk` con `external merge` → dispara.
 - Variante: solo `Sort Method` menciona `external merge` (fallback) → dispara.
@@ -12,23 +12,23 @@ Cubre:
   sort_space_used ausente.
 - Plurales: dos sorts en disco en el mismo plan.
 """
- 
+
 from __future__ import annotations
- 
+
 from typing import Any
- 
+
 import pytest
- 
+
 from motor import detect_sort_spill_to_disk, parse_explain
- 
+
 _EMPTY_SNAPSHOT: dict[str, Any] = {"schema": {}, "sizes": {}, "stats": {}}
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
- 
- 
+
+
 def test_dispara_con_sort_space_type_disk() -> None:
     """Sort que desbordó: campo authoritativo `Sort Space Type=Disk`."""
     raw = {
@@ -60,7 +60,7 @@ def test_dispara_con_sort_space_type_disk() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     assert detection.confidence == pytest.approx(0.95)
     match = detection.evidence["matches"][0]
@@ -73,11 +73,10 @@ def test_dispara_con_sort_space_type_disk() -> None:
     assert match["suggested_set_work_mem_sql"] == "SET work_mem = '48MB';"
     # Sugerencia de índice sobre primera columna del sort_key
     assert match["suggested_create_index_sql"] == (
-        "CREATE INDEX idx_posts_created_at "
-        "ON public.posts (created_at);"
+        "CREATE INDEX idx_posts_created_at " "ON public.posts (created_at);"
     )
- 
- 
+
+
 def test_dispara_con_sort_method_external_aunque_space_type_falte() -> None:
     """Fallback defensivo: si por alguna razón Postgres no emite
     `Sort Space Type` pero el método dice `external merge`, igual
@@ -98,8 +97,8 @@ def test_dispara_con_sort_method_external_aunque_space_type_falte() -> None:
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
     assert detection.found is True
- 
- 
+
+
 def test_sort_key_con_tabla_columna_emite_create_index() -> None:
     """`Sort Key: ['users.email']` → `CREATE INDEX idx_users_email`."""
     raw = {
@@ -119,18 +118,16 @@ def test_sort_key_con_tabla_columna_emite_create_index() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
- 
+
     match = detection.evidence["matches"][0]
-    assert match["suggested_create_index_sql"] == (
-        "CREATE INDEX idx_users_email ON users (email);"
-    )
- 
- 
+    assert match["suggested_create_index_sql"] == ("CREATE INDEX idx_users_email ON users (email);")
+
+
 # ---------------------------------------------------------------------------
 # Casos negativos
 # ---------------------------------------------------------------------------
- 
- 
+
+
 def test_no_dispara_con_sort_en_memoria() -> None:
     """Sort que cupo en work_mem — comportamiento sano."""
     raw = {
@@ -150,11 +147,11 @@ def test_no_dispara_con_sort_en_memoria() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is False
     assert detection.evidence == {"matches": []}
- 
- 
+
+
 def test_no_dispara_sin_nodos_sort() -> None:
     """Plan sin Sort — nada que verificar."""
     raw = {
@@ -172,8 +169,8 @@ def test_no_dispara_sin_nodos_sort() -> None:
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
     assert detection.found is False
- 
- 
+
+
 def test_no_dispara_si_sort_method_no_es_external() -> None:
     """`Sort Method: top-N heapsort` — sort en memoria que cupo."""
     raw = {
@@ -192,13 +189,13 @@ def test_no_dispara_si_sort_method_no_es_external() -> None:
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
     assert detection.found is False
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Robustez de la sugerencia de índice
 # ---------------------------------------------------------------------------
- 
- 
+
+
 def test_sort_key_es_expresion_no_emite_create_index() -> None:
     """`Sort Key: ['lower(name)']` — expresión funcional, no inventamos
     SQL: el índice funcional es decisión del recomendador con más
@@ -220,12 +217,12 @@ def test_sort_key_es_expresion_no_emite_create_index() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     match = detection.evidence["matches"][0]
     assert match["suggested_create_index_sql"] is None
- 
- 
+
+
 def test_sort_sin_sort_key_no_emite_create_index() -> None:
     """Caso degenerado: Sort node parseado sin Sort Key. No crashea."""
     raw = {
@@ -244,13 +241,13 @@ def test_sort_sin_sort_key_no_emite_create_index() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     match = detection.evidence["matches"][0]
     assert match["sort_key"] == []
     assert match["suggested_create_index_sql"] is None
- 
- 
+
+
 def test_sort_sin_sort_space_used_emite_work_mem_default() -> None:
     """Sin `Sort Space Used` no podemos dimensionar — sugerimos 64MB
     como punto de partida razonable."""
@@ -272,13 +269,13 @@ def test_sort_sin_sort_space_used_emite_work_mem_default() -> None:
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
     match = detection.evidence["matches"][0]
     assert match["suggested_set_work_mem_sql"] == "SET work_mem = '64MB';"
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Plurales
 # ---------------------------------------------------------------------------
- 
- 
+
+
 def test_dos_sorts_en_disco_se_reportan_ambos() -> None:
     """Plan con dos Sort, uno arriba de cada rama de un Merge Join.
     Ejercita la convención `evidence['matches']` en plural."""
@@ -325,7 +322,7 @@ def test_dos_sorts_en_disco_se_reportan_ambos() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_sort_spill_to_disk(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     keys = {tuple(m["sort_key"]) for m in detection.evidence["matches"]}
     assert keys == {("posts.id",), ("comments.post_id",)}

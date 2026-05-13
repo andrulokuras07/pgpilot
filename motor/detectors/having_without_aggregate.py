@@ -79,9 +79,7 @@ def detect_having_without_aggregate(
             continue
 
         group_cols: set[str] = {
-            expr.name.lower()
-            for expr in group.expressions
-            if isinstance(expr, exp.Column)
+            expr.name.lower() for expr in group.expressions if isinstance(expr, exp.Column)
         }
         if not group_cols:
             continue

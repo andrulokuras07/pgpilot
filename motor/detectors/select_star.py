@@ -95,9 +95,7 @@ def _select_has_star(select: exp.Select) -> bool:
         if isinstance(projection, exp.Star):
             return True
         # `tabla.*` se representa como Column(this=Star()).
-        if isinstance(projection, exp.Column) and isinstance(
-            projection.this, exp.Star
-        ):
+        if isinstance(projection, exp.Column) and isinstance(projection.this, exp.Star):
             return True
     return False
 

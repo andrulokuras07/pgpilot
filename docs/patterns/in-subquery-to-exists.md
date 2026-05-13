@@ -17,19 +17,30 @@ apreciables.
 
 ## Cómo aparece en el plan
 
-El optimizador de Postgres convierte automáticamente los `IN (SELECT
-...)` no correlacionados en un **Hash Semi Join** o **Nested Loop Semi
-Join** (nodo `Hash Join` / `Nested Loop` con `Join Type: "Semi"`). Esto
-ya es una optimización del planner, pero señala estructuralmente el
-patrón: el detector usa esta señal del plan junto con el SQL para
-confirmar y generar el rewrite.
+Postgres puede emitir dos formas estructurales equivalentes:
+
+1. **Hash/Nested Loop/Merge Join con `Join Type: "Semi"`** — la forma
+   "limpia" cuando el planner detecta que el IN es semánticamente un
+   Semi Join.
+2. **Join Inner con un `Aggregate` descendiente en uno de los hijos**
+   — Postgres deduplica la salida de la subquery con un HashAggregate
+   y luego hace un Inner Join contra la lista única. Q17 real en
+   AppDB v1 produce esta forma (Nested Loop Inner con HashAggregate
+   bajo el lado outer). El `Aggregate` aquí no proviene de un GROUP
+   BY del usuario (esos quedan POR ENCIMA del join, no debajo).
+
+Ambas formas significan lo mismo: el motor materializó la lista del
+IN antes de cruzarla con la tabla outer.
 
 ## Regla de detección
 
 La detección requiere **ambas** señales:
 
-1. **Plan:** existe al menos un nodo `Hash Join` o `Nested Loop` (o
-   `Merge Join`) con `join_type = "Semi"`.
+1. **Plan:** alguna de estas dos formas en el árbol:
+   - `Hash Join` / `Nested Loop` / `Merge Join` con
+     `join_type = "Semi"`, **o**
+   - Un join cualquiera con un `Aggregate` descendiente bajo alguno
+     de sus subárboles.
 2. **SQL:** la query contiene `col IN (SELECT ...)` (no `NOT IN`, que es
    D21) con una subquery que no referencia columnas calificadas de la
    tabla exterior (no correlacionada).

@@ -13,10 +13,10 @@ import sqlglot
 from motor import parse_explain
 from motor.detectors.in_subquery_to_exists import detect_in_subquery_to_exists
 
-
 # ---------------------------------------------------------------------------
 # Helpers de plan
 # ---------------------------------------------------------------------------
+
 
 def _plan_hash_semi_join() -> dict:
     """Plan sintético con Hash Join de tipo Semi — lo que Postgres genera
@@ -88,6 +88,70 @@ def _plan_nested_loop_semi_join() -> dict:
                     "Total Cost": 10.0,
                     "Plan Rows": 1,
                     "Plan Width": 4,
+                },
+            ],
+        }
+    }
+
+
+def _plan_q17_dedup_aggregate() -> dict:
+    """Forma real que Postgres genera para Q17 en AppDB v1.
+
+    El planner colapsa `IN (SELECT author_id FROM posts ...)` en un
+    HashAggregate que deduplica los author_id, y luego hace un Nested
+    Loop Inner contra `users` usando ese conjunto único como outer.
+    No emite Semi Join.
+    """
+    return {
+        "Plan": {
+            "Node Type": "Nested Loop",
+            "Join Type": "Inner",
+            "Startup Cost": 0.0,
+            "Total Cost": 5000.0,
+            "Plan Rows": 100,
+            "Plan Width": 8,
+            "Plans": [
+                {
+                    "Node Type": "Aggregate",
+                    "Strategy": "Hashed",
+                    "Parent Relationship": "Outer",
+                    "Startup Cost": 0.0,
+                    "Total Cost": 3000.0,
+                    "Plan Rows": 100,
+                    "Plan Width": 4,
+                    "Plans": [
+                        {
+                            "Node Type": "Bitmap Heap Scan",
+                            "Relation Name": "posts",
+                            "Startup Cost": 0.0,
+                            "Total Cost": 2500.0,
+                            "Plan Rows": 5000,
+                            "Plan Width": 4,
+                            "Recheck Cond": "(created_at > (now() - '7 days'::interval))",
+                            "Plans": [
+                                {
+                                    "Node Type": "Bitmap Index Scan",
+                                    "Index Name": "idx_posts_created_at",
+                                    "Startup Cost": 0.0,
+                                    "Total Cost": 100.0,
+                                    "Plan Rows": 5000,
+                                    "Plan Width": 0,
+                                    "Index Cond": "(created_at > (now() - '7 days'::interval))",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "Node Type": "Index Only Scan",
+                    "Relation Name": "users",
+                    "Index Name": "users_pkey",
+                    "Parent Relationship": "Inner",
+                    "Startup Cost": 0.0,
+                    "Total Cost": 10.0,
+                    "Plan Rows": 1,
+                    "Plan Width": 8,
+                    "Index Cond": "(id = posts.author_id)",
                 },
             ],
         }
@@ -173,7 +237,7 @@ def test_dispara_q17_in_subquery_con_semi_join() -> None:
     m = matches[0]
     assert m["column"] == "id"
     assert m["inner_table"] == "posts"
-    assert m["has_semi_join_in_plan"] is True
+    assert m["has_in_signal_in_plan"] is True
 
 
 def test_rewrite_q17_es_parseable_y_usa_exists() -> None:
@@ -200,6 +264,30 @@ def test_rewrite_q17_es_parseable_y_usa_exists() -> None:
     assert " IN " not in rewrite.upper() or "NOT IN" not in rewrite.upper()
 
 
+def test_dispara_con_aggregate_dedup_bajo_join() -> None:
+    """Q17 real: Nested Loop Inner con HashAggregate dedupador debajo.
+
+    Postgres no emite Semi Join en esta forma — colapsa el IN en un
+    Aggregate que materializa la lista única y luego hace Inner Join.
+    D20 debe disparar igual: el anti-pattern es el mismo.
+    """
+    sql = (
+        "SELECT id FROM users "
+        "WHERE id IN ("
+        "SELECT author_id FROM posts WHERE created_at > NOW() - INTERVAL '7 days'"
+        ")"
+    )
+    plan = parse_explain(_plan_q17_dedup_aggregate())
+    detection = detect_in_subquery_to_exists(plan, {}, sql=sql)
+
+    assert detection.found is True
+    matches = detection.evidence["matches"]
+    assert len(matches) == 1
+    assert matches[0]["column"] == "id"
+    assert matches[0]["inner_table"] == "posts"
+    assert matches[0]["has_in_signal_in_plan"] is True
+
+
 def test_dispara_con_nested_loop_semi_join() -> None:
     """Nested Loop Semi Join también dispara D20."""
     sql = "SELECT id FROM users WHERE id IN (SELECT author_id FROM posts)"
@@ -207,7 +295,7 @@ def test_dispara_con_nested_loop_semi_join() -> None:
     detection = detect_in_subquery_to_exists(plan, {}, sql=sql)
 
     assert detection.found is True
-    assert detection.evidence["matches"][0]["has_semi_join_in_plan"] is True
+    assert detection.evidence["matches"][0]["has_in_signal_in_plan"] is True
 
 
 # ---------------------------------------------------------------------------

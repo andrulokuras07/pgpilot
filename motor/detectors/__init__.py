@@ -3,6 +3,7 @@
 
 from motor.detectors.cardinality_misestimate import detect_cardinality_misestimate
 from motor.detectors.correlated_subquery import detect_correlated_subquery
+from motor.detectors.count_star_full_table import detect_count_star_full_table
 from motor.detectors.function_in_where import detect_function_in_where
 from motor.detectors.having_without_aggregate import detect_having_without_aggregate
 from motor.detectors.in_subquery_to_exists import detect_in_subquery_to_exists
@@ -39,4 +40,5 @@ __all__ = [
     "detect_cardinality_misestimate",
     "detect_having_without_aggregate",
     "detect_in_subquery_to_exists",
+    "detect_count_star_full_table",
 ]

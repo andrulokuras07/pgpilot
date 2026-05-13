@@ -72,14 +72,10 @@ def detect_missing_covering_index(
                 "index_name": node.index_name,
                 "index_cond": node.index_cond,
                 "indexed_columns": (
-                    list(existing_index.get("columns", []))
-                    if existing_index
-                    else None
+                    list(existing_index.get("columns", [])) if existing_index else None
                 ),
                 "include_columns": (
-                    list(existing_index.get("include", []))
-                    if existing_index
-                    else None
+                    list(existing_index.get("include", [])) if existing_index else None
                 ),
             }
         )

@@ -21,6 +21,7 @@ _EMPTY_SNAP: dict = {}
 # Happy paths
 # ---------------------------------------------------------------------------
 
+
 def test_dispara_con_cte_referenciada_una_sola_vez() -> None:
     """CTE Scan sin recursión y referenciada una vez → candidata a NOT MATERIALIZED."""
     raw = {
@@ -100,6 +101,7 @@ def test_dispara_con_multiples_ctes_distintas_cada_una_una_vez() -> None:
 # ---------------------------------------------------------------------------
 # Casos negativos
 # ---------------------------------------------------------------------------
+
 
 def test_no_dispara_sin_cte_scan() -> None:
     """Plan sin CTE Scan: no hay CTE materializada."""
@@ -249,6 +251,7 @@ def test_no_dispara_cuando_una_cte_es_buena_y_otra_recursiva() -> None:
 # ---------------------------------------------------------------------------
 # Robustez
 # ---------------------------------------------------------------------------
+
 
 def test_cte_name_none_no_rompe() -> None:
     """CTE Scan sin CTE Name (edge case del parser) no rompe el detector."""

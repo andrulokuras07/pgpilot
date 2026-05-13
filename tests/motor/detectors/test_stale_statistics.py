@@ -1,9 +1,9 @@
 """Tests del detector D2 — Stats obsoletas (mismatch plan_rows/actual_rows).
- 
+
 Criterio del backlog:
     Hecho cuando: detector pasa test sobre plan plantado, documentado
     en patterns.
- 
+
 Cubre:
 - Happy path: Seq Scan con ratio plan/actual ≥10x → dispara.
 - Variante: ratio inverso (subestimación) → también dispara.
@@ -14,23 +14,23 @@ Cubre:
 - Robustez: `actual_rows=0` con plan grande (overestimación total),
   `relation_name is None`, plan sin scans.
 """
- 
+
 from __future__ import annotations
- 
+
 from typing import Any
- 
+
 import pytest
- 
+
 from motor import detect_stale_statistics, parse_explain
- 
+
 _EMPTY_SNAPSHOT: dict[str, Any] = {"schema": {}, "sizes": {}, "stats": {}}
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
- 
- 
+
+
 def test_dispara_con_overestimacion_10x() -> None:
     """Plan estima 50_000, realidad fue 100 → ratio 500x, dispara."""
     raw = {
@@ -50,7 +50,7 @@ def test_dispara_con_overestimacion_10x() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     assert detection.confidence == pytest.approx(0.85)
     matches = detection.evidence["matches"]
@@ -62,8 +62,8 @@ def test_dispara_con_overestimacion_10x() -> None:
     assert match["ratio"] == pytest.approx(500.0)
     assert match["direction"] == "overestimated"
     assert match["suggested_sql"] == "ANALYZE posts;"
- 
- 
+
+
 def test_dispara_con_subestimacion_10x() -> None:
     """Plan estima 10, realidad fue 200_000 → ratio 20_000x, dispara
     como `underestimated` (el caso más peligroso: Postgres pensó "esto
@@ -85,14 +85,14 @@ def test_dispara_con_subestimacion_10x() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     match = detection.evidence["matches"][0]
     assert match["direction"] == "underestimated"
     assert match["ratio"] == pytest.approx(20_000.0)
     assert match["node_type"] == "Bitmap Heap Scan"
- 
- 
+
+
 def test_dispara_en_index_scan_y_index_only_scan() -> None:
     """No solo Seq Scan: stats obsoletas también afectan Index Scan
     (el planner pudo elegir mal el orden de los joins de arriba)."""
@@ -112,16 +112,16 @@ def test_dispara_en_index_scan_y_index_only_scan() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     assert detection.evidence["matches"][0]["node_type"] == "Index Scan"
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Casos negativos
 # ---------------------------------------------------------------------------
- 
- 
+
+
 def test_no_dispara_con_ratio_menor_a_10x() -> None:
     """Ratio 5x — Postgres siempre tiene algo de error, no es stats
     obsoletas. Defensa contra falsos positivos."""
@@ -140,11 +140,11 @@ def test_no_dispara_con_ratio_menor_a_10x() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is False
     assert detection.evidence == {"matches": []}
- 
- 
+
+
 def test_no_dispara_sin_actual_rows() -> None:
     """EXPLAIN sin ANALYZE — no podemos comparar contra realidad."""
     raw = {
@@ -160,10 +160,10 @@ def test_no_dispara_sin_actual_rows() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is False
- 
- 
+
+
 def test_no_dispara_en_nodos_join_solo_porque_su_estimacion_es_mala() -> None:
     """Frontera con D18: D2 ignora joins; el error de cardinalidad en
     joins es competencia de D18 (que recomienda CREATE STATISTICS).
@@ -206,10 +206,10 @@ def test_no_dispara_en_nodos_join_solo_porque_su_estimacion_es_mala() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is False
- 
- 
+
+
 def test_no_dispara_sin_scans_en_el_plan() -> None:
     """Plan trivial (Result, Limit, etc.). Nada que comparar."""
     raw = {
@@ -226,13 +226,13 @@ def test_no_dispara_sin_scans_en_el_plan() -> None:
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
     assert detection.found is False
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Robustez
 # ---------------------------------------------------------------------------
- 
- 
+
+
 def test_dispara_con_actual_rows_cero_y_overestimacion_total() -> None:
     """Plan esperaba 5000, realidad 0 (filtro super-selectivo no
     capturado en stats). Es el caso más claro de stats obsoletas
@@ -252,13 +252,13 @@ def test_dispara_con_actual_rows_cero_y_overestimacion_total() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     match = detection.evidence["matches"][0]
     assert match["direction"] == "overestimated"
     assert match["actual_rows"] == 0
- 
- 
+
+
 def test_no_dispara_con_actual_rows_cero_y_plan_rows_bajo() -> None:
     """`actual_rows=0` con `plan_rows=3` — Postgres acertó en
     "casi nada", no es stats obsoletas."""
@@ -278,8 +278,8 @@ def test_no_dispara_con_actual_rows_cero_y_plan_rows_bajo() -> None:
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
     assert detection.found is False
- 
- 
+
+
 def test_no_falla_si_relation_name_es_None() -> None:
     """Scans sintéticos (VALUES, function scans envueltos) pueden no
     traer relation_name. Si no podemos recomendar ANALYZE sobre una
@@ -298,8 +298,8 @@ def test_no_falla_si_relation_name_es_None() -> None:
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
     assert detection.found is False
- 
- 
+
+
 def test_multiples_scans_problematicos_se_reportan_todos() -> None:
     """Dos scans malos en un mismo plan → dos matches independientes.
     Ejercita la convención `evidence['matches']` en plural."""
@@ -341,7 +341,56 @@ def test_multiples_scans_problematicos_se_reportan_todos() -> None:
     }
     plan = parse_explain(raw)
     detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
- 
+
     assert detection.found is True
     tables = {m["table"] for m in detection.evidence["matches"]}
     assert tables == {"posts", "users"}
+
+
+# ---------------------------------------------------------------------------
+# Frontera: bajo LIMIT el scan se trunca y actual_rows no es comparable
+# ---------------------------------------------------------------------------
+
+
+def test_no_dispara_scan_bajo_limit() -> None:
+    """`SELECT … ORDER BY x LIMIT N` trunca el scan: Postgres push-down
+    detiene el Index Scan cuando el LIMIT está saciado. `actual_rows`
+    refleja el LIMIT, no el universo real de filas; comparar contra
+    `plan_rows` produce un overestimate falso.
+
+    Caso S05 de la suite anti-FP: ``SELECT … FROM tags ORDER BY x LIMIT 10``
+    donde el Index Scan reportaba plan_rows=6286, actual_rows=10. D2
+    debe abstenerse.
+    """
+    raw = {
+        "Plan": {
+            "Node Type": "Limit",
+            "Plan Rows": 10,
+            "Plan Width": 4,
+            "Startup Cost": 0.0,
+            "Total Cost": 1.0,
+            "Actual Startup Time": 0.05,
+            "Actual Total Time": 0.10,
+            "Actual Rows": 10,
+            "Actual Loops": 1,
+            "Plans": [
+                {
+                    "Node Type": "Index Scan",
+                    "Relation Name": "tags",
+                    "Index Name": "idx_tags_use_count",
+                    "Plan Rows": 6286,
+                    "Plan Width": 4,
+                    "Startup Cost": 0.0,
+                    "Total Cost": 200.0,
+                    "Actual Startup Time": 0.05,
+                    "Actual Total Time": 0.10,
+                    "Actual Rows": 10,
+                    "Actual Loops": 1,
+                }
+            ],
+        }
+    }
+    plan = parse_explain(raw)
+    detection = detect_stale_statistics(plan, _EMPTY_SNAPSHOT)
+
+    assert detection.found is False

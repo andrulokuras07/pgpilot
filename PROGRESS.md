@@ -109,6 +109,55 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### F3 — Investigación competitiva
+- **Autor:** Alexander. Rama `docs/F3-investigacion-competitiva`.
+- **Archivos:**
+  `business/competencia.md` (nuevo, documento principal en Markdown),
+  `business/competencia.docx` (nuevo, mismo contenido en Word para entrega),
+  `scripts/generate_competencia_docx.py` (nuevo, genera el .docx desde
+  python-docx para mantener ambos archivos sincronizados),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** investigación de los 4 competidores que pide el ticket F3 del
+  backlog (pganalyze, EverSQL ahora dentro de Aiven, DBtune, pgMustard) más
+  Datadog DBM mencionado como contexto de mercado sin entrar en la tabla
+  comparativa. El documento sigue la regla F3 de "no afirmar superioridad
+  en todas las dimensiones": incluye sección dedicada (§5) a dónde la
+  competencia gana sobre PgPilot — track record de pganalyze, cobertura
+  MySQL de EverSQL, scope de configuración de DBtune, precio de pgMustard.
+  - **Tabla comparativa:** 11 dimensiones × 5 productos. Cubre foco
+    principal, BD soportadas, precio entrada, modelo de deployment,
+    mecanismo de detección, validación de recomendación, sanitización,
+    modo offline, idioma, workload analysis y detección de anti-patterns
+    explícita.
+  - **Diferenciadores defendibles identificados para PgPilot:** motor
+    determinístico transparente (cliente puede auditar reglas), sanitización
+    fuerte de literales pre-LLM, validación en sandbox antes de mostrar
+    recomendación, foco LATAM con español + modo offline (bundle JSON
+    sin conexión a BD productiva).
+  - **Pricing investigado:** pganalyze $149 USD/mes/servidor (Production),
+    $399 USD/mes (Scale 4 servers), Enterprise custom; EverSQL gratuito
+    desde la adquisición de Aiven; DBtune trial hasta 3 DB sin pricing
+    comercial público; pgMustard 95 €/año/usuario; Datadog DBM $70/host.
+    Sugerencia para PgPilot: $29 USD/dev/mes posicionado entre pgMustard
+    y pganalyze.
+  - **Script de generación:** `generate_competencia_docx.py` produce el
+    .docx desde python-docx (versión 1.2.0 en el entorno). El .md y el
+    .docx son ambos artefactos entregables; el .md es la fuente de
+    verdad para el repo, el .docx es para entrega formal. Si la
+    investigación se actualiza, regenerar el .docx corriendo el script
+    para no divergir.
+- **Cumplimiento de reglas:**
+  - R15: entrada en PROGRESS.md incluida en el mismo commit. No aplica
+    actualizar CLAUDE.md de ningún módulo porque F3 es documentación
+    de negocio, no toca API de ningún módulo del producto.
+  - Honestidad F3: §5 lista las desventajas de PgPilot frente a cada
+    competidor en lugar de pintar el producto como superior universal.
+- **Pendiente vigilar:** los precios y features pueden cambiar de aquí a
+  Demo Day (14 de mayo). Si en el pitch el evaluador pregunta por algún
+  dato específico, revisar el sitio del competidor el día anterior.
+  F11 (modelo de pricing) y F14 (diferenciador defendible) dependen de
+  esta investigación.
+
 #### E1+E2+E3+E4+E5+E6 — Workload Analysis + Sandbox hardening
 - **Autor:** Diego. Rama `feat/E1-E6-workload-sandbox`.
 - **Archivos:**

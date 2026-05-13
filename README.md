@@ -24,6 +24,11 @@ Guías por módulo orientadas a uso externo:
   sanitización de literales antes de cualquier llamada, prompt
   pedagógico con guardrails, validación Pydantic + cruzada de la
   respuesta, modo "LLM apagado" con plantillas y logs estructurados.
+- [`docs/sandbox.md`](docs/sandbox.md) — Postgres efímero de
+  validación: por qué no se copian datos del cliente (R6), cómo se
+  falsean estadísticas con `pg_restore_relation_stats`, qué timeouts
+  aplican, qué cleanup garantiza el aislamiento, y cómo se valida
+  una recomendación de índice antes de mostrársela al usuario (C3).
 - [`docs/patterns/`](docs/patterns/) — catálogo de anti-patterns,
   un archivo `.md` por detector implementado.
 - [`docs/decisiones.md`](docs/decisiones.md) — registro vivo de

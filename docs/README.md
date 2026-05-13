@@ -15,6 +15,10 @@ al equipo del proyecto viven en cada `CLAUDE.md` de su módulo.
 - [`ia.md`](ia.md) — guía de la capa de integración con el LLM
   (sanitización, prompt con guardrails, validación Pydantic +
   cruzada, modo "LLM apagado" con plantillas, logs estructurados).
+- [`sandbox.md`](sandbox.md) — guía del Postgres efímero de
+  validación (por qué no copia datos, cómo falsea stats, qué
+  timeouts aplican, cleanup garantizado, validador de recomendaciones
+  con `enable_seqscan=off`).
 - [`patterns/`](patterns/) — catálogo de anti-patterns que PgPilot
   detecta, un archivo por detector implementado.
 - [`decisiones.md`](decisiones.md) — registro vivo de decisiones
@@ -23,6 +27,6 @@ al equipo del proyecto viven en cada `CLAUDE.md` de su módulo.
   de negocio, briefs técnicos).
 
 Documentación de los módulos pendientes de publicar:
-`/workload`, `/sandbox`, `/backend`, `/frontend`.
+`/workload`, `/backend`, `/frontend`.
 Mientras tanto, su API interna está descrita en el `CLAUDE.md`
 correspondiente.

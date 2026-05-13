@@ -225,6 +225,47 @@ Cada match incluye `table`, `column` (la no-bool), `bool_column`,
   contra `bool_cols` filtra falsos matches. Pero queda registrado
   como riesgo si en el futuro hay strings con palabras reservadas.
 
+### `detect_having_without_aggregate(plan, snapshot, *, sql=None) -> Detection`
+Detector D19. Usa la firma extendida con `sql=` (igual que D9/D11)
+porque la distinción entre `HAVING` y `WHERE` no es recuperable desde
+el plan. Parsea el SQL con sqlglot, localiza los SELECT con `HAVING` y
+verifica si todas las referencias del HAVING son columnas del `GROUP BY`
+(ninguna función de agregación). En ese caso el filtro puede moverse a
+`WHERE` antes de la agregación, lo que reduce las filas que llegan al
+nodo `Aggregate` y puede habilitar el uso de índices. Cada match
+incluye `from_table`, `having_expr`, `group_by_cols` y
+`suggested_rewrite` (SQL completo reescrito con WHERE en lugar de
+HAVING). Confianza 0.9.
+
+**Limitaciones conocidas:**
+- Detecta correlación en `HAVING` solo sobre `Column` nodes simples; GROUP
+  BY con expresiones complejas (`EXTRACT(...)`) produce `group_cols`
+  vacío y el detector no dispara (falso negativo voluntario).
+- Nota de sqlglot: la cláusula FROM se accede con `args.get("from_")`
+  (clave con guión bajo, porque `from` es palabra reservada de Python).
+
+### `detect_in_subquery_to_exists(plan, snapshot, *, sql=None) -> Detection`
+Detector D20. Usa firma extendida con `sql=`. Detecta
+`col IN (SELECT ...)` no correlacionados cuando el plan confirma la
+señal con un nodo Semi Join (`Hash Join` / `Nested Loop` / `Merge Join`
+con `join_type="Semi"`). Las dos señales son obligatorias: si no hay
+Semi Join en el plan, D20 no dispara (evita FP sobre tablas pequeñas).
+La correlación se verifica buscando referencias calificadas
+(`tabla.columna`) de las tablas externas dentro de la subquery.
+La recomendación es reescribir como `WHERE EXISTS (SELECT 1 ...)`.
+Cada match incluye `column`, `inner_table`, `has_semi_join_in_plan` y
+`suggested_rewrite`. Confianza 0.9.
+
+**Limitaciones conocidas:**
+- No detecta correlación sin calificador de tabla (`WHERE col = outer`
+  sin `outer_table.col`). En AppDB v1 las queries usan calificadores.
+- El `suggested_rewrite` reemplaza todo el WHERE por `EXISTS`. Si la
+  query tiene otras condiciones además del IN, el rewrite pierde esas
+  condiciones (limitación documentada). Para Q17 esto no aplica.
+- Nota de sqlglot: `IN (SELECT ...)` se representa como
+  `In(query=Subquery(this=Select(...)))` — el Select real está en
+  `subquery_node.this`, no en `subquery_node.expressions`.
+
 ### `detect_cardinality_misestimate(plan, snapshot) -> Detection`
 Detector D18. Recorre joins (`Hash Join`, `Merge Join`, `Nested
 Loop`), compara `plan_rows` vs `actual_rows`, y si la razón en
@@ -647,7 +688,9 @@ motor/
 │   ├── unnecessary_cte_materialize.py   # D12
 │   ├── missing_index.py                 # D16
 │   ├── partial_index_opportunity.py     # D17
-│   └── cardinality_misestimate.py       # D18
+│   ├── cardinality_misestimate.py       # D18
+│   ├── having_without_aggregate.py      # D19
+│   └── in_subquery_to_exists.py        # D20
 ├── recommender.py  # Recommendation + recommenders por detector (C2 + D13)
 └── CLAUDE.md       # este archivo
 ```

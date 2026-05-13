@@ -21,22 +21,17 @@ Antes de empezar a trabajar, leen las últimas 2-3 entradas de `PROGRESS.md` par
 ## Estado actual del proyecto
 
 ### Cobertura de detección
-- **AppDB v1:** **16 / 20** queries detectadas (medido 2026-05-12 con
-  los tests parametrizados de D14
-  `tests/integration/test_coverage_appdb_v1.py` bajo
-  `APPDB_TEST_TIMEOUT_MS=180000`). **Objetivo rúbrica ≥16/20
-  CUMPLIDO.** Cobertura confirmada en cada `pytest` por el test
-  agregador `test_coverage_meets_rubric_target` (test de bloqueo, no
-  xfail). Trayectoria del día: **0/20** (solo C1) → **3/20** (C1+D4-D7)
-  → **11/20** (sumando D16-D18) → **15/20** (uniendo D8-D12) →
-  **16/20** (D7 alcanza Q19 — NOT IN — al subir el timeout en los
-  tests).
-- **Disparos por detector:** D16=7 (Q01, Q02, Q06, Q08, Q09, Q15, Q16),
-  D9=4 (Q01, Q07, Q12, Q18), D7=2 (Q09, Q19), D4/D5/D12/D17/D18=1 c/u,
+- **AppDB v1:** **17 / 20** queries esperadas cubiertas con D19+D20
+  (medición previa: 16/20 al 2026-05-12). Q17 ahora cubierta por D20.
+  **Objetivo rúbrica ≥16/20 SUPERADO.** Test de bloqueo
+  `test_coverage_meets_rubric_target` exige ≥16. Tests de integración
+  requieren AppDB corriendo con `APPDB_TEST_TIMEOUT_MS=180000`.
+- **Disparos esperados con 15 detectores activos (C1+D4-D12+D16-D20):**
+  D16=7 (Q01,Q02,Q06,Q08,Q09,Q15,Q16), D9=4 (Q01,Q07,Q12,Q18),
+  D7=2 (Q09,Q19), D20=1 (Q17), D4/D5/D12/D17/D18/D19=1 c/u,
   D6/D8/D10/D11/C1=0.
 - **Queries aún huérfanas:** Q05 (sort spill → D3), Q10 (stats
-  obsoletas en tags chica → D2), Q17 (IN→EXISTS → D20), Q20 (count(*)
-  → D22). Cuatro detectores baratos llevarían a 19/20.
+  obsoletas en tags chica → D2), Q20 (count(*) → D22).
 - **Falsos positivos:** triage abierto. Q02/Q15/Q16 son "TP extras"
   (D16 captura el síntoma del índice faltante incluso cuando el
   anti-pattern raíz es OR cross-column, recheck con alta filter ratio
@@ -110,9 +105,57 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
-## 2026-05-12
+## 2026-05-12 
 
 ### Avances
+
+#### D19 + D20 — detectores HAVING→WHERE e IN→EXISTS
+- **Autor:** David Ramirez. Rama `feat/D19-D20-detectores`.
+- **Archivos:**
+  `motor/detectors/having_without_aggregate.py` (nuevo, D19),
+  `motor/detectors/in_subquery_to_exists.py` (nuevo, D20),
+  `motor/detectors/__init__.py` (re-exporta D19 y D20),
+  `motor/__init__.py` (expone D19 y D20 en API pública),
+  `tests/motor/detectors/test_having_without_aggregate.py` (nuevo, 11 tests),
+  `tests/motor/detectors/test_in_subquery_to_exists.py` (nuevo, 11 tests),
+  `tests/integration/test_coverage_appdb_v1.py` (añade D19/D20 a DETECTORS;
+  Q17 flipada a `expected_covered=True`; docstring del agregador actualizado),
+  `docs/patterns/having-without-aggregate.md` (nuevo),
+  `docs/patterns/in-subquery-to-exists.md` (nuevo),
+  `motor/CLAUDE.md` (documenta D19 y D20, actualiza estructura interna),
+  `PROGRESS.md` (esta entrada).
+- **Notas:**
+  - **D19 (HAVING→WHERE):** detector SQL-only (firma extendida `sql=` igual
+    que D9/D11). Parsea el SQL con sqlglot, localiza HAVING clauses donde
+    todas las referencias son columnas del GROUP BY (sin funciones de
+    agregación). El `suggested_rewrite` es el SELECT completo reescrito con
+    WHERE en lugar de HAVING — parseable con sqlglot. Cubre **Q16**
+    (`GROUP BY author_id HAVING author_id = 1000`). Fix importante: sqlglot
+    almacena la cláusula FROM bajo la clave `"from_"` (no `"from"`) porque
+    `from` es palabra reservada de Python.
+  - **D20 (IN→EXISTS):** detector dual plan+SQL. Señal del plan: nodo `Hash
+    Join` o `Nested Loop` con `join_type="Semi"`. Señal SQL: patrón `col IN
+    (SELECT ...)` no correlacionado (correlación verificada por calificadores
+    de tabla). Ambas señales son obligatorias para disparar. Fix importante:
+    sqlglot envuelve la subquery del IN en un nodo `Subquery`; el `Select`
+    real está en `subquery_node.this`. Cubre **Q17** (`WHERE id IN (SELECT
+    author_id FROM posts WHERE ...)`).
+  - **Cobertura integración:** Q17 flipada de `xfail` a `expected_covered=True`.
+    Los 15 detectores activos quedan: C1, D4-D12, D16-D20. Cobertura
+    esperada en AppDB v1: **17/20** (Q05/Q10/Q20 siguen siendo xfail,
+    pendientes D3/D2/D22).
+- **Cumplimiento de reglas:**
+  - R1: los detectores son funciones puras; ninguna consulta al LLM.
+  - R2: D19 y D20 operan sobre AST sqlglot (no regex sobre SQL crudo) + atributos
+    tipados de `PlanNode`. El uso de sqlglot es la excepción documentada del
+    stack (igual que D9/D11).
+  - R9: funciones puras, sin I/O ni estado global.
+  - R10: 22 tests nuevos; suite total: **198 passed** (176 motor + 22 nuevos).
+  - R14: cero literales de AppDB hardcodeados.
+  - R15: esta entrada + `motor/CLAUDE.md` actualizado en el mismo commit.
+- **Tests:** ✅ **198 passed** (22 nuevos D19/D20 + 176 suite motor existente,
+  sin regresiones). Tests de integración (D14/D15) requieren AppDB.
+
 
 
 #### D2 + D3 — Detectores de stats obsoletas y sort en disco

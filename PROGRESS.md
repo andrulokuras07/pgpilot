@@ -113,6 +113,63 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### F11 + F12 — Modelo de pricing + análisis de mercado (TAM/SAM/SOM)
+- **Autor:** Alexander. Rama `docs/F11-F12-pricing-mercado`.
+- **Archivos:**
+  `business/pricing.md` (nuevo, modelo de pricing F11),
+  `business/pricing.docx` (nuevo, mismo contenido en Word),
+  `business/mercado.md` (nuevo, análisis TAM/SAM/SOM F12),
+  `business/mercado.docx` (nuevo, mismo contenido en Word),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** dos tickets empaquetados en una rama porque ambos dependen
+  de F3 (mergeado hoy en PR #42), ambos son entregables de negocio puros,
+  y ambos alimentan F15 (documento consolidado). El bundle reduce
+  overhead de revisión a 2 días del Demo Day.
+  - **F11 (pricing):** modelo per-seat (por developer), no per-server.
+    Decisión deliberada que se aleja del estándar pganalyze/Datadog y
+    se acerca a Cursor/Copilot/Linear. Cuatro tiers: Free ($0, 1 BD,
+    sin LLM — compatible con R5), Pro ($29 USD/dev/mes, hasta 3 BDs,
+    LLM + workload + sandbox cloud), Team ($49/dev/mes mínimo 3 devs,
+    SSO + RBAC), Enterprise (desde $99/dev/mes con piso $5,000/año,
+    self-hosted, SOC2, modo offline). Sanity check unitario: costo
+    variable por análisis Pro ≈ $0.026 (Claude API + sandbox); con
+    30 análisis/mes promedio → margen bruto ~97 %. Riesgos listados
+    explícitos: anclaje pganalyze, validación pendiente con paying
+    customers (F6-F8), cambio de Claude API pricing.
+  - **F12 (TAM/SAM/SOM):** metodología honesta — cotas razonadas con
+    fuente, no números exactos. **TAM** = $800 M USD ARR (subset
+    Postgres × performance tools del DBMS global $137 B en 2025
+    según Gartner). **SAM** = $34 M USD ARR (2 M devs LATAM × 45 %
+    backend × 55 % Postgres × 20 % willingness-to-pay × $29/mes ×
+    12). **SOM medio** = $850 K USD ARR a 4 años (2.5 % del SAM)
+    como referencia para narrativa de pitch; cubre runway de equipo
+    fundador 3-4 personas LATAM bootstrapped. Tabla comparativa con
+    ARR estimado de competidores (pganalyze $5-15 M, DBtune $1-3 M,
+    pgMustard $0.3-1 M) para contextualizar la escala.
+  - **Honestidad explícita §6 de mercado.md:** las cifras de developer
+    population LATAM varían 3× entre fuentes; willingness-to-pay 20 %
+    es benchmark general no validado para LATAM Postgres; TAM puede
+    estar off por ±40 %. Documentado para que no se afirme certeza
+    en el Q&A del Demo Day.
+  - **Generación del .docx:** se usó un script temporal
+    `scripts/_temp_gen_pricing_mercado_docx.py` que se borra antes
+    del commit (el equipo decidió no versionar generadores de docx,
+    igual que en F3). Si hay que regenerar el .docx, reescribir el
+    script localmente desde el .md.
+- **Cumplimiento de reglas:**
+  - R15: esta entrada incluida en el mismo commit. No aplica actualizar
+    CLAUDE.md de ningún módulo (documentación de negocio, no toca API
+    de código).
+  - Honestidad F3 (extendida al espíritu F12): §6 de mercado.md lista
+    explícitamente las limitaciones del análisis. F11 §6 lista los
+    riesgos del modelo.
+- **Pendiente vigilar:** F6-F8 deben validar el rango de precios y la
+  hipótesis del 20 % willingness-to-pay. Si los entrevistados rechazan
+  $29/mes como caro o muestran disposición a $50+, ajustar §2 de
+  pricing.md y propagar al SAM de mercado.md. F13 (go-to-market) usa
+  el plan year-1-to-year-4 esbozado al final de mercado.md como punto
+  de partida.
+
 #### F3 — Investigación competitiva
 - **Autor:** Alexander. Rama `docs/F3-investigacion-competitiva`.
 - **Archivos:**

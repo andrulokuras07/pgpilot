@@ -109,6 +109,112 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (E13 — documentación del sandbox)
+
+### Avances
+
+#### E13 — Documentación del sandbox en `/docs/sandbox.md`
+- **Autor:** Emilio. Rama `docs/E13-sandbox`.
+- **Archivos:**
+  `docs/sandbox.md` (nuevo — guía completa orientada a externos: 15
+  secciones cubriendo qué hace el módulo, pipeline en dos modos
+  con diagramas ASCII, por qué no se copian datos R6, por qué
+  Postgres 18 mientras AppDB sigue en 16, cómo se falsean stats con
+  `pg_restore_relation_stats` y qué NO se falsea, API pública
+  agrupada por flujo, timeouts en dos capas, cleanup feliz y de
+  emergencia, EXPLAIN en sandbox, validador C3 con el truco
+  `enable_seqscan=off` y la semántica acotada de `"validated"`,
+  3 garantías para el usuario, configuración, 7 limitaciones
+  honestas, 4 direcciones de extensión, referencias),
+  `README.md` raíz (suma entrada para `docs/sandbox.md`),
+  `docs/README.md` (suma entrada para `sandbox.md`; quita
+  `/sandbox` de los módulos pendientes),
+  `sandbox/CLAUDE.md` (callout en cabecera apuntando al doc externo +
+  recordatorio R15 + nota sobre las 4 preguntas críticas del Demo
+  Day),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** El backlog define 4 preguntas explícitas que el doc
+  debe responder, y el doc tiene una sección dedicada a cada una:
+  - **§3 "Por qué no se copian datos"** — R6, 3 razones (privacidad
+    con compliance PCI/HIPAA/GDPR, costo/latencia de réplica masiva,
+    EXPLAIN sin ANALYZE no necesita filas reales).
+  - **§5 "Cómo se falsean stats"** — `pg_restore_relation_stats`
+    (PG18+) con tabla de qué se falsea (`relpages`, `reltuples`) y
+    qué NO se falsea (stats por columna, FKs), heurística
+    `relpages = max(1, estimated_rows // 100)`, y la limitación
+    crítica del tamaño físico que justifica la semántica acotada de
+    "validated" del validador C3.
+  - **§7 "Timeouts"** — dos capas (sesión por pool default 5s +
+    per-call con SET LOCAL), tabla de defaults por función, qué pasa
+    cuando hay timeout (`QueryCanceled` SQLSTATE 57014 + cleanup
+    garantizado por try/finally).
+  - **§8 "Cleanup"** — feliz (try/finally en cada operación), de
+    emergencia (`cleanup_zombie_schemas` al startup E5), por qué el
+    prefijo `analysis_`, esquema de nombres
+    `analysis_<uuid_hex>` (41 chars, bajo el límite Postgres de 63).
+  - **Bonus: validador C3 (§10)** — aunque no es una de las 4
+    preguntas explícitas, es el caso de uso más importante del
+    sandbox y la sección donde aterriza el truco
+    `enable_seqscan=off` documentado con sus 3 outcomes posibles y
+    la semántica acotada de `"validated"` ("estructuralmente
+    aplicable", no "el planner lo elegirá en producción").
+  - **§11 "Garantías para el usuario"** sigue el mismo patrón que
+    `docs/ia.md`: privacidad (R6 — cero filas, stats por columna
+    diferidas, sandbox vive en infra PgPilot), aislamiento (cleanup
+    garantizado por capas), determinismo/honestidad (función pura
+    `verdict_from_plans`, semántica acotada documentada).
+  - **Diagrama ASCII (§2)** en dos modos: EXPLAIN puro vs validador
+    C3. Permite al lector externo ver el flujo entero sin tener que
+    abrir el código.
+  - **Sin cambios de código ejecutable.** E13 es 100% documentación.
+    Cobertura AppDB v1 sigue en 18/20.
+  - **Verificación de fidelidad** contra código:
+    - 9 entradas en `sandbox/__init__.py::__all__` —
+      `SandboxConfig`, `create_sandbox_pool`, `setup_sandbox_schema`,
+      `drop_sandbox_schema`, `cleanup_zombie_schemas`,
+      `explain_in_sandbox`, `ValidationResult`,
+      `validate_index_recommendation`, `verdict_from_plans` —
+      todas documentadas con firma, parámetros, retorno.
+    - Heurística `relpages = max(1, estimated_rows // 100)` —
+      coincide con `_set_relation_stats` en `setup.py:230`.
+    - Truco `SET LOCAL enable_seqscan = off` — coincide con
+      `validator.py:185`.
+    - Sufijo `_c3` para el `CREATE INDEX` en sandbox — coincide
+      con `validator.py:161`.
+    - Outcomes de `ValidationResult.verdict` (`"validated" |
+      "discarded" | "skipped_no_sandbox_signal"`) — coinciden con
+      el `Literal` en `validator.py:44`.
+    - 5 env vars (`SANDBOX_HOST/PORT/DB/USER/PASSWORD`) — coinciden
+      con `.env.example` del repo.
+- **Cumplimiento de reglas:**
+  - **R15:** PROGRESS.md + `sandbox/CLAUDE.md` actualizados en el
+    mismo commit. Callout en `sandbox/CLAUDE.md` obliga a mantener
+    sync entre código y doc externo.
+  - **R6 documentado como garantía contractual** en §3 con 3
+    razones explícitas; §11.1 lo refuerza como compromiso al
+    usuario.
+  - **R9 documentado** en §11.3 (función pura
+    `verdict_from_plans` testeable sin sandbox; cada
+    `setup_sandbox_schema` self-contained).
+  - Honestidad (espíritu F3): §13 lista 7 limitaciones reales
+    (tamaño físico vs `pg_class.relpages`, stats por columna
+    diferidas, FKs no se replican, multi-schema causa colisión,
+    tipos exóticos requieren extensiones, pool no read-only,
+    permisos de `pg_restore_relation_stats`).
+  - Nombres significativos (R13): rama `docs/E13-sandbox`.
+- **Pendiente vigilar:**
+  - Documentación equivalente para `/workload`, `/backend`,
+    `/frontend` cuando sus E* lleguen al tope. Patrón establecido
+    en E10/E11/E12/E13.
+  - Cuando se añadan stats por columna en sandbox (`pg_restore_attribute_stats`),
+    actualizar `docs/sandbox.md` §5.2 y §11.1 (política de PII en
+    MCV).
+  - Si la semántica de `"validated"` se endurece (insertar filas
+    sintéticas o usar stats por columna), actualizar §10.3 — los
+    clientes leen ese contrato.
+
+---
+
 ## 2026-05-13 (E12 — documentación de la capa de IA)
 
 ### Avances

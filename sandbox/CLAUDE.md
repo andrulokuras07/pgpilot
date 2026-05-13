@@ -1,5 +1,12 @@
 # sandbox — Postgres efímero para validar planes
 
+> **Doc externo:** la guía orientada a personas fuera del equipo vive
+> en `docs/sandbox.md` (E13) — cubre las 4 preguntas críticas del
+> Demo Day (por qué no copia datos, cómo falsea stats, qué timeouts,
+> qué cleanup) además del validador C3 con su semántica acotada de
+> `"validated"`. Si cambias firmas o comportamiento de la API pública,
+> actualiza también ese archivo en el mismo commit (R15).
+
 ## Propósito
 
 `/sandbox` monta schemas temporales en una segunda BD de Postgres

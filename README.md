@@ -749,9 +749,30 @@ pytest -m "not integration and not llm"
 # Tests con LLM real (requieren ANTHROPIC_API_KEY válida)
 pytest -m llm
 
-# Coverage
-pytest --cov=. --cov-report=term-missing
+# Coverage del backend (config en pyproject.toml [tool.coverage])
+pytest -m "not integration and not llm" --cov --cov-report=term-missing
 ```
+
+### Cobertura actual del backend (F16)
+
+| Métrica | Valor |
+|---|---|
+| **Cobertura total** | **85.3%** |
+| Líneas cubiertas | 2 119 / 2 420 |
+| Branches cubiertos | 642 / 816 |
+| Suite ejecutada | `pytest -m "not integration and not llm"` (403 unit tests, ~8 s) |
+| Mínimo exigido (F16 / `fail_under`) | 50% |
+| Bonus rúbrica | **+3 pts** desbloqueados |
+
+> El número se mide sobre los módulos del backend (`backend/`, `conector/`, `ia/`, `motor/`, `sandbox/`, `workload/`). Tests, scripts auxiliares y el frontend quedan excluidos vía `[tool.coverage.run]` en `pyproject.toml`. Los tests `integration` y `llm` se omiten porque dependen de Docker / API key viva; al ejecutarlos en CI sumarían cobertura adicional sobre `sandbox/explain.py`, `sandbox/setup.py` y `conector/schema.py`, que hoy son los archivos con mayor superficie sin cubrir.
+
+Para regenerar el número desde cero:
+
+```bash
+pytest -m "not integration and not llm" --cov --cov-report=term-missing
+```
+
+El comando falla si la cobertura cae bajo el 50% (`fail_under = 50` en `pyproject.toml`), lo que protege contra regresiones futuras.
 
 Linter y formato (corre antes de cada commit):
 

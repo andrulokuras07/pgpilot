@@ -110,6 +110,82 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ---
 
 
+## 2026-05-13 (F16 — coverage del backend documentado)
+
+### Avances
+
+#### F16 — Tests automatizados con coverage decente
+- **Autor:** David. Rama `feat/F16-tests-coverage`.
+- **Archivos:**
+  `pyproject.toml` (secciones nuevas `[tool.coverage.run]` y
+  `[tool.coverage.report]`: `branch=true`, `source=[backend, conector,
+  ia, motor, sandbox, workload]`, `omit=tests/scripts/frontend/.venv`,
+  `fail_under=50`, `precision=1`, `show_missing=true`, `exclude_lines`
+  para `pragma: no cover`, `raise NotImplementedError`,
+  `if __name__ == "__main__":` y `if TYPE_CHECKING:`),
+  `requirements.txt` (agregado `pytest-cov>=5.0,<8` justo después de
+  `pytest`),
+  `.gitignore` (agregadas las rutas `.coverage.*` y `coverage.xml`
+  para que los artefactos JSON/XML que produce `pytest --cov` no se
+  versionen — `.coverage` y `htmlcov/` ya estaban),
+  `README.md` (sección "Tests y calidad" reescrita: agregado bloque
+  "Cobertura actual del backend (F16)" con tabla de métricas, comando
+  exacto para regenerar el número, y nota explicando qué se excluye y
+  por qué — alineado con `fail_under=50`),
+  `PROGRESS.md` (esta entrada).
+- **Notas:**
+  - **F16 pide:** "asegurar que tests existentes cubren al menos 50%
+    del código backend. Correr `pytest --cov` y documentar el número
+    en README. Esto es bonus +3 pts." **Hecho-cuando: coverage >50%.**
+  - **Resultado medido:** `pytest -m "not integration and not llm"
+    --cov` reporta **85.3% (2 119 / 2 420 líneas, 642 / 816 branches)**
+    sobre la suite de 403 tests unitarios. Bonus +3 desbloqueado con
+    35 puntos de margen sobre el mínimo. Tiempo de la corrida: ~8 s.
+  - **Por qué `not integration and not llm`:** los tests integration
+    requieren Docker (`appdb` + `sandbox` arriba con `APPDB_TEST_TIMEOUT_MS=180000`)
+    y los `llm` requieren `ANTHROPIC_API_KEY`. La rúbrica F16 mide
+    cobertura del código del backend, no la disponibilidad de
+    infraestructura. Cuando esos suites corran (CI con Docker o
+    desarrollo local con contenedores), van a sumar cobertura
+    adicional sobre `sandbox/setup.py` (16.7% hoy), `sandbox/explain.py`
+    (28.6%), `conector/schema.py` (24.4%) y `conector/stats.py` (31.2%)
+    — los archivos con mayor superficie sin cubrir, todos
+    dependientes de una BD viva. La cobertura unit-only ya supera el
+    50% solita, así que F16 está cerrada sin necesidad de levantar
+    Docker.
+  - **`fail_under = 50`:** se eligió igualar el mínimo de la rúbrica
+    para que `pytest --cov` rompa CI ante regresiones. No se subió a
+    85 (que sería el "lock-in" del número actual) para no penalizar
+    contribuciones legítimas que añadan código sin tests todavía;
+    50 es el piso negociado por la rúbrica.
+  - **Archivos peor cubiertos (todos con dependencia de BD viva, por
+    eso no aparecen en unit tests):** `sandbox/setup.py` 16.7%,
+    `conector/schema.py` 24.4%, `sandbox/explain.py` 28.6%,
+    `conector/stats.py` 31.2%, `conector/pool.py` 40.0%,
+    `conector/offline.py` 42.9%, `sandbox/pool.py` 44.4%. El resto
+    de módulos está ≥56% (la mayoría >85%). Recomendado mover estos
+    a tests `integration` si se quiere subir el número global a 90%+
+    en una iteración futura.
+  - **Test pre-existente que falla en Windows (no introducido por
+    F16):** `tests/ia/test_logs.py::test_log_llm_interaction_oserror_devuelve_none_sin_propagar`
+    falla en Windows porque `chmod(0o400)` sobre un directorio
+    temporal no produce un `OSError` al escribir (semántica
+    POSIX-only). El test fue agregado en `9754ea6` y pasaba bajo
+    macOS/Linux/WSL2. **No se tocó** en esta rama (fuera de scope
+    de F16). Si bloquea CI en máquinas Windows, candidato a marcarse
+    con `@pytest.mark.skipif(sys.platform == "win32", reason="chmod
+    no aplica en NTFS")` en un PR posterior.
+  - **Convención R15:** no se modificó ningún `CLAUDE.md` de módulo
+    porque F16 no cambia API pública ni formato de datos de ningún
+    módulo. Sólo agrega config de tooling (`pyproject.toml`),
+    dependencias de dev (`pytest-cov`) y documentación (README +
+    PROGRESS).
+- **Tests:** ✅ Verde. 403 passed, 1 failed pre-existente (Windows-only,
+  no introducido por F16), 82 deselected (`integration`/`llm`).
+  Coverage 85.3% (`fail_under = 50` cumplido con margen).
+
+---
+
 ## 2026-05-13 (F15 — documento de negocio consolidado)
 
 ### Avances

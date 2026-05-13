@@ -109,6 +109,103 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (E11 — documentación del motor determinístico)
+
+### Avances
+
+#### E11 — Documentación del motor en `/docs/motor.md`
+- **Autor:** Emilio. Rama `docs/E11-motor`.
+- **Archivos:**
+  `docs/motor.md` (nuevo — guía completa orientada a externos:
+  arquitectura del parser, contrato de detectores, catálogo de los
+  19 detectores cruzado con `docs/patterns/`, recomendador y
+  selectividad D13, cómo agregar un detector nuevo en 7 pasos,
+  reglas R1/R2/R9/R10/R14 aplicadas, tests, limitaciones
+  transversales, otros caminos de extensión, referencias),
+  `README.md` raíz (antes "Documentación detallada por venir"; ahora
+  enlaza a `docs/conector.md`, `docs/motor.md`, `docs/patterns/`,
+  `docs/decisiones.md`, `docs/briefs/`, `RULES.md`, `PROGRESS.md`),
+  `docs/README.md` (suma entrada para `motor.md`; quita `/motor` de
+  los módulos pendientes),
+  `docs/patterns/README.md` (corrige 4 filas del índice
+  desactualizadas: D19, D20, D21, D22 estaban marcadas
+  `_(pendiente)_` y/o "⬜ Backlog" pese a estar implementadas con
+  doc del patrón existente — todas pasan a ✅ Implementado con
+  enlace al archivo correcto),
+  `motor/CLAUDE.md` (callout en cabecera apuntando al doc externo +
+  recordatorio R15 para mantener sync entre código, doc del motor y
+  catálogo de patterns),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** Mismo enfoque que E10 — diferencia clave entre el doc
+  externo y el `CLAUDE.md` interno:
+  - **`motor/CLAUDE.md`** es para agentes/devs dentro del proyecto:
+    decisiones internas, limitaciones por detector, cómo extender
+    siguiendo las convenciones del repo, qué viola qué regla.
+  - **`docs/motor.md`** es para un developer externo evaluando o
+    integrando el motor: describe el pipeline completo
+    (EXPLAIN→parse→detect→recommend), todas las APIs públicas con
+    tablas de campos, el catálogo de 19 detectores con confianzas,
+    el contrato de `Detection`/`Recommendation`, los 7 pasos para
+    añadir un detector, y las 5 limitaciones transversales.
+  - **Cobertura del catálogo:** las 19 detecciones implementadas
+    (C1, D2-D12, D16-D22) están listadas con código, función,
+    descripción de 1 línea, confianza típica y enlace al doc del
+    patrón en `docs/patterns/`. Coincide con `__all__` de
+    `motor/__init__.py` (verificado uno por uno).
+  - **Cross-link con `/docs/patterns/`** (lo que pide explícitamente
+    el ticket): cada fila del catálogo enlaza al archivo `.md` del
+    patrón correspondiente. Aprovechando el roce con el catálogo,
+    corrijo el índice de `docs/patterns/README.md` que tenía 4
+    filas desactualizadas (D19, D20, D21, D22). Esto entra natural
+    bajo la directiva "cruzado con `/docs/patterns/`" del backlog.
+  - **Enlace desde README principal** (también pedido por el
+    backlog, "Hecho cuando: doc completo y enlazado desde README
+    principal"): el `README.md` raíz se reescribió de 5 líneas
+    placeholder a un índice real que apunta a los docs publicados y
+    a las reglas del proyecto.
+  - **Diagrama ASCII del pipeline** (sección 2) muestra el flujo
+    completo de cómo el motor se integra con `/conector`
+    (snapshot) y produce `Detection` + `Recommendation` para
+    `/backend`. Sin él, el lector externo tendría que reconstruir el
+    flujo leyendo 4 módulos distintos.
+  - **Sin cambios de código ejecutable.** E11 es 100%
+    documentación. Cobertura AppDB v1 sigue en 18/20.
+  - **Verificación de fidelidad** del catálogo (sección 4.3) contra
+    el código:
+    - 19 entradas en `__all__` con prefijo `detect_*` → 19 filas en
+      la tabla, mismos códigos.
+    - Confianzas declaradas en cada detector (`motor/detectors/*.py`)
+      → mismas en la tabla (1.0 C1, 0.85 D2, 0.95 D3, 0.9 D4-D5,
+      0.85 D6, 0.95 D7, 0.8 D8, 0.85 D9, 0.7 D10, 0.9 D11, 0.85
+      D12, 0.95 D16, 0.8 D17, 0.85 D18, 0.9 D19, 0.9 D20, 0.95 D21,
+      0.95 D22).
+    - 17 tipos de nodo en `KNOWN_NODE_TYPES` → mismos 17 listados
+      en la sección 3.5.
+- **Cumplimiento de reglas:**
+  - **R15:** PROGRESS.md + `motor/CLAUDE.md` + índice del catálogo
+    (`docs/patterns/README.md`) actualizados en el mismo commit. El
+    callout en `motor/CLAUDE.md` obliga a futuros mantenedores a
+    mantener los tres docs en sync.
+  - Honestidad (espíritu F3): sección 9 lista 5 limitaciones
+    transversales reales (resolución de tabla por sufijo, regex
+    monocolumna sobre `node.filter`, presencia no impacto, parser
+    silencioso ante campos nuevos, sin agregación entre detectores).
+  - Nombres significativos (R13): rama `docs/E11-motor`.
+- **Pendiente vigilar:**
+  - Documentación equivalente para `/ia`, `/workload`, `/sandbox`,
+    `/backend`, `/frontend` cuando sus tickets E* lleguen al tope
+    del backlog. Mantener el patrón establecido en E10/E11
+    (audiencia externa, secciones de garantías + ejemplos +
+    limitaciones honestas).
+  - Cuando aterrice un detector D23 (o se reescriba uno existente),
+    actualizar 3 lugares: `docs/motor.md` sección 4.3,
+    `docs/patterns/<nuevo-patron>.md` + entrada en
+    `docs/patterns/README.md`, y la lista `_DETECTORS` en
+    `backend/orchestrator.py`. El callout R15 de `motor/CLAUDE.md`
+    recuerda esto.
+
+---
+
 ## 2026-05-13 (E10 — documentación API del conector)
 
 ### Avances

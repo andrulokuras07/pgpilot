@@ -28,10 +28,10 @@ archivo `.md`. Este `README.md` es el índice + la plantilla.
 | 13 | CTE materializada innecesariamente | [`unnecessary-cte-materialize.md`](unnecessary-cte-materialize.md) | `motor.detect_unnecessary_cte_materialize` (D12) | ✅ Implementado |
 | 14 | Oportunidad de índice parcial | [`partial-index-opportunity.md`](partial-index-opportunity.md) | `motor.detect_partial_index_opportunity` (D17) | ✅ Implementado |
 | 15 | Error de cardinalidad en JOIN multi-condición | [`cardinality-misestimate.md`](cardinality-misestimate.md) | `motor.detect_cardinality_misestimate` (D18) | ✅ Implementado |
-| 16 | HAVING que debería ser WHERE | _(pendiente)_ | D19 | ⬜ Backlog |
-| 17 | IN con subquery debería ser EXISTS | _(pendiente)_ | D20 | ⬜ Backlog |
-| 18 | NOT IN con subquery potencialmente NULL | _(pendiente)_ | D21 | ✅ Implementado 
-| 19 | `count(*)` sobre tabla grande sin WHERE | _(pendiente)_ | D22 | ⬜ Backlog |
+| 16 | HAVING que debería ser WHERE | [`having-without-aggregate.md`](having-without-aggregate.md) | `motor.detect_having_without_aggregate` (D19) | ✅ Implementado |
+| 17 | IN con subquery debería ser EXISTS | [`in-subquery-to-exists.md`](in-subquery-to-exists.md) | `motor.detect_in_subquery_to_exists` (D20) | ✅ Implementado |
+| 18 | NOT IN con subquery potencialmente NULL | [`not-in-nullable-subquery.md`](not-in-nullable-subquery.md) | `motor.detect_not_in_nullable_subquery` (D21) | ✅ Implementado |
+| 19 | `count(*)` sobre tabla grande sin WHERE | [`count-star-full-table.md`](count-star-full-table.md) | `motor.detect_count_star_full_table` (D22) | ✅ Implementado |
 
 Cuando un detector aterriza, su autor:
 

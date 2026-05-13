@@ -19,6 +19,13 @@ SPA en React + Vite con un editor Monaco para escribir SQL y un panel donde se m
   las tarjetas listando qué etapa(s) fallaron; lo que sí se calculó
   (detecciones / recomendaciones determinísticas) se sigue mostrando
   debajo
+- ✅ E9 — cada tarjeta de recomendación muestra los 4 indicadores de
+  validación R3 ("schema OK", "no duplica índice", "sintaxis válida",
+  "sandbox confirma mejora") como píldoras de tres estados (✓ verde,
+  ✗ rojo, — gris/N/A). Componente `ValidationIndicators` en
+  `RecommendationCard.jsx`; consume el dict `validations` que envía
+  el backend (no se computa nada en el frontend). Es la respuesta
+  visual al Q&A de Demo Day "¿cómo evitan alucinaciones?".
 
 ---
 
@@ -46,11 +53,11 @@ frontend/
     ├── main.jsx              # createRoot + StrictMode
     ├── App.jsx               # editor Monaco + botón Analizar + panel de tarjetas + BannerParcial (E8)
     ├── DetectionCard.jsx     # C10 — tarjeta por entrada de `detections[]`
-    ├── RecommendationCard.jsx# C10 — tarjeta por entrada de `recommendations[]`
+    ├── RecommendationCard.jsx# C10 — tarjeta por entrada de `recommendations[]` + ValidationIndicators (E9)
     ├── PlanComparison.jsx    # C11 + E7 — comparativo before/after enriquecido
     ├── index.css             # reset y color-scheme dark
     ├── App.css               # layout y tema VS Code
-    └── Card.css              # estilos de tarjetas + comparativo (C10/C11/E7) + .cards-warning (E8)
+    └── Card.css              # estilos de tarjetas + comparativo (C10/C11/E7) + .cards-warning (E8) + .card-validations (E9)
 ```
 
 ---
@@ -112,6 +119,15 @@ El payload de `/analyze` (ver `backend/CLAUDE.md`) se proyecta así:
     LLM/plantilla, `sandbox_verdict`), bloques SQL copiables para
     `create_index_sql` y `explanation.suggested_rewrite` si existe,
     y un `<details>` con justificación / impacto / selectividad.
+  - **E9:** `ValidationIndicators` debajo de los badges. Consume
+    `recommendation.validations` (`{schema_ok, no_duplicate_index,
+    syntax_valid, sandbox_improves}`); cada clave es `true | false |
+    null` y se pinta como píldora ✓ verde / ✗ rojo / — gris (N/A).
+    Si el backend no envía el campo (compatibilidad con respuestas
+    antiguas), el componente no renderea nada en vez de mostrar 4 N/A
+    "ruidosos". El cómputo vive 100% en el backend
+    (`backend/orchestrator.py::_compute_validations`) — el frontend
+    solo muestra.
   - **C11 + E7:** componente `PlanComparison` debajo de la prosa.
     Consume `recommendation.sandbox_plan_comparison`
     (`{node_type_before, node_type_after, cost_before, cost_after,

@@ -35,6 +35,16 @@ FastAPI que orquesta los módulos del proyecto y expone los endpoints que consum
   etapa "terminal" → sigue mapeando a `AnalyzeError`/4xx/504/500. Red de
   seguridad final en el handler: cualquier excepción inesperada fuera del
   orquestador → 500 genérico (detalle loggeado, nunca filtrado al cliente)
+- ✅ E9 — cada `recommendation` del payload lleva un dict `validations`
+  con 4 claves (`schema_ok`, `no_duplicate_index`, `syntax_valid`,
+  `sandbox_improves`), cada una `True | False | None` (N/A). Computadas
+  por `_compute_validations` en el orquestador a partir del snapshot,
+  del `kind`/`create_index_sql` de la recomendación y del
+  `sandbox_verdict`. El frontend pinta 4 indicadores por tarjeta (verde
+  ✓ / rojo ✗ / gris —) como respuesta visual a "¿cómo evitan
+  alucinaciones?". Los findings también llevan el bloque, con
+  `no_duplicate_index` y `sandbox_improves` en N/A (no proponen índice
+  formal y no pasan por sandbox).
 
 ---
 
@@ -142,6 +152,12 @@ de los demás detectores.
         "suggested_rewrite": null,             // o un SQL alternativo del LLM
         "confidence": 0.88,
         "source": "llm"                        // o "template"
+      },
+      "validations": {                         // E9 — indicadores R3
+        "schema_ok": true,                     //  - true / false / null (N/A)
+        "no_duplicate_index": true,            //  - null para ANALYZE / findings
+        "syntax_valid": true,                  //  - null si no hay SQL
+        "sandbox_improves": true               //  - null sin sandbox / skipped
       }
     }
   ],

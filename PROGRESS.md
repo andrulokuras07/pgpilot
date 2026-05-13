@@ -109,6 +109,97 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (E9 — indicadores de validación R3 en el frontend)
+
+### Avances
+
+#### E9 — Frontend muestra estado de validaciones
+- **Autor:** Emilio. Rama `feat/E9-frontend-validaciones`.
+- **Archivos:**
+  `backend/orchestrator.py` (nuevo helper `_compute_validations` + 3
+  sub-checks; cada `recommendation` del payload lleva ahora un dict
+  `validations` con 4 claves),
+  `frontend/src/RecommendationCard.jsx` (nuevo componente
+  `ValidationIndicators` con `ValidationItem`; renderea las 4
+  píldoras justo debajo de los badges existentes),
+  `frontend/src/Card.css` (bloque "Indicadores de validación R3 (E9)":
+  `.card-validations`, `.validation-pill`, estados `pass`/`fail`/`na`),
+  `tests/backend/test_orchestrator.py` (5 tests nuevos: ANALYZE
+  happy path, sandbox validated, sandbox discarded, findings con
+  los 4 indicadores, helper directo con 5 casos de falla),
+  `backend/CLAUDE.md` (campo `validations` documentado en API),
+  `frontend/CLAUDE.md` (E9 en Estado actual + mapping del payload
+  a la UI),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** Cada tarjeta de recomendación expone los 4 indicadores que
+  pide el backlog ("schema OK", "no duplica índice", "sintaxis válida",
+  "sandbox confirma mejora") como respuesta visual al Q&A de Demo Day
+  "¿cómo evitan alucinaciones?". El cómputo vive en el backend
+  (`_compute_validations`) y NO se inventa en el frontend.
+  - **Tres estados por indicador:** ✓ verde (pasó), ✗ rojo (falló), —
+    gris (N/A). El estado N/A es importante: ANALYZE no propone índice
+    nuevo (→ `no_duplicate_index=null`); sin sandbox no hay señal
+    (→ `sandbox_improves=null`); findings no tienen `create_index_sql`
+    aplicable (→ `no_duplicate_index=null`, `sandbox_improves=null`).
+    No marcar "rojo" lo que en realidad no aplica fue decisión
+    deliberada — un rojo falso erosiona la confianza del indicador.
+  - **`syntax_valid` combina dos chequeos** porque sqlglot hace
+    fallback laxo a `exp.Command` ante sintaxis desconocida (acepta
+    `CREATE !! INDEX …` sin error). El check es: (a) la "cabeza" del
+    SQL matchea `_VALID_SQL_HEAD` (verbo SQL conocido seguido del
+    objeto correcto), y (b) sqlglot parsea sin lanzar. Cualquiera de
+    las dos en rojo → indicador en rojo.
+  - **`no_duplicate_index` cruza con `snapshot["schema"][t].indexes`**
+    buscando que no exista ya un índice cubriendo
+    (tabla, primera_columna, método). El motor en `recommend_for_*` ya
+    emite `kind="analyze"` cuando el índice existe, así que el caso
+    "rojo" desde la pipeline real es teórico hoy — pero el indicador
+    queda listo para cuando E14 (LLM propone índices alternativos)
+    pueda generar duplicados accidentales.
+  - **`sandbox_improves` deriva de `sandbox_verdict`:** `validated`→✓,
+    `discarded`→✗, `skipped_no_sandbox_signal` o `null`→N/A. No se
+    inventa una "falla" cuando el sandbox no está configurado (R5).
+  - **Compatibilidad con respuestas viejas:** si el backend no envía
+    `validations` (ej. tests antiguos, respuestas cacheadas), el
+    componente no renderea nada en vez de mostrar 4 N/A "ruidosos".
+- **Cumplimiento de reglas:**
+  - **R3** cumplida visualmente: las 4 validaciones que ya hacían el
+    motor y el sandbox ahora son auditables por el usuario en la
+    tarjeta, no quedan ocultas en logs server-side.
+  - **R5:** las validaciones se computan siempre, incluso con sandbox
+    apagado o LLM apagado; los indicadores quedan en N/A en vez de
+    crashear.
+  - **R8** (type hints): `_compute_validations` y sus 4 sub-checks
+    tipados; el JSX usa PropTypes-by-shape vía destructuring.
+  - **R10** (tests): 4 e2e (ANALYZE, sandbox validated/discarded,
+    findings) + 1 unitario directo del helper con 5 escenarios
+    (duplicado, sintaxis rota, tabla fantasma, columna fantasma,
+    skipped).
+  - **R12** (frontend con hooks): `ValidationIndicators` y
+    `ValidationItem` son funcionales puros sin estado propio.
+  - **R15:** esta entrada + `backend/CLAUDE.md` + `frontend/CLAUDE.md`
+    actualizados en el mismo commit/PR.
+- **Tests:** ✅ 26/26 verde en `tests/backend/test_orchestrator.py`
+  (+5 netos). Suite unit completa: 365 passed, 1 skipped, 1 falla
+  pre-existente en Windows
+  (`test_log_llm_interaction_oserror_devuelve_none_sin_propagar` —
+  `chmod 0o400` no aplica a directorios en Windows; falla también
+  en `main`).
+- **Cobertura de detección:** sin cambios (E9 es un cambio de UI; la
+  cobertura de AppDB v1 sigue en 18/20).
+- **Pendiente vigilar:**
+  - Cuando aterrice E14 (LLM proponiendo rewrites/índices), añadir un
+    quinto indicador para `explanation.suggested_rewrite` o reutilizar
+    los 4 actuales con la semántica clara.
+  - El backend ya envía `validations` para findings con
+    `no_duplicate_index` y `sandbox_improves` en N/A. Si en el futuro
+    algún detector empieza a sugerir un `create_index_sql` formal en
+    su finding (sin pasar por `motor.recommend`), revisar que la
+    validación de duplicación funcione (hoy depende de `kind`, no del
+    contenido del SQL).
+
+---
+
 ## 2026-05-13 (fix orquestador multi-detector)
 
 ### Avances

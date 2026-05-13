@@ -77,6 +77,84 @@ function SourceBadge({ source }) {
   );
 }
 
+// E9: las 4 validaciones R3 que el backend ya calculó por recomendación.
+// Orden fijo para que la lectura visual sea consistente entre tarjetas.
+// `null` representa "no aplica" (ej. findings sin SQL, ANALYZE sobre el
+// índice existente) y se pinta neutro — no debe leerse como falla.
+const VALIDACIONES = [
+  {
+    key: "schema_ok",
+    label: "schema OK",
+    titulo: "La tabla y columna referenciadas existen en el schema.",
+  },
+  {
+    key: "no_duplicate_index",
+    label: "no duplica índice",
+    titulo: "El índice propuesto no duplica uno ya existente.",
+  },
+  {
+    key: "syntax_valid",
+    label: "sintaxis válida",
+    titulo: "El SQL parsea con sqlglot.",
+  },
+  {
+    key: "sandbox_improves",
+    label: "sandbox confirma mejora",
+    titulo:
+      "El planner del sandbox cambia a un nodo Index/Bitmap al aplicar la recomendación.",
+  },
+];
+
+function ValidationItem({ estado, label, titulo }) {
+  let clase = "validation-pill";
+  let icono = "—";
+  let aria = "no aplica";
+  if (estado === true) {
+    clase += " validation-pass";
+    icono = "✓";
+    aria = "pasó";
+  } else if (estado === false) {
+    clase += " validation-fail";
+    icono = "✗";
+    aria = "falló";
+  } else {
+    clase += " validation-na";
+  }
+  return (
+    <span className={clase} title={titulo} aria-label={`${label}: ${aria}`}>
+      <span className="validation-icon" aria-hidden="true">
+        {icono}
+      </span>
+      <span className="validation-label">{label}</span>
+    </span>
+  );
+}
+
+function ValidationIndicators({ validations }) {
+  // Si el backend no envió `validations` (compatibilidad con respuestas
+  // antiguas), no renderea nada — preferible al ruido de 4 N/A.
+  if (!validations) return null;
+  return (
+    <div
+      className="card-validations"
+      role="group"
+      aria-label="Validaciones de la recomendación"
+    >
+      <span className="card-validations-title">Validaciones</span>
+      <div className="card-validations-list">
+        {VALIDACIONES.map(({ key, label, titulo }) => (
+          <ValidationItem
+            key={key}
+            estado={validations[key] ?? null}
+            label={label}
+            titulo={titulo}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RecommendationCard({ recommendation }) {
   const rec = recommendation;
   const explanation = rec.explanation ?? {};
@@ -95,6 +173,8 @@ function RecommendationCard({ recommendation }) {
         <SourceBadge source={explanation.source} />
         <VerdictBadge verdict={rec.sandbox_verdict} />
       </div>
+
+      <ValidationIndicators validations={rec.validations} />
 
       {explanation.text ? (
         <p className="card-body card-explanation">{explanation.text}</p>

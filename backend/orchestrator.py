@@ -76,9 +76,11 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 from typing import Any
 
 import psycopg
+import sqlglot
 from psycopg_pool import ConnectionPool
 
 from ia import (
@@ -321,28 +323,29 @@ def analyze_query(
             request_id=request_id,
             errors=errors,
         )
-        recommendations_out.append(
-            {
-                "kind": rec.kind,
-                "table": rec.table,
-                "column": rec.column,
-                "index_method": rec.index_method,
-                "index_name": rec.index_name,
-                "create_index_sql": rec.create_index_sql,
-                "justification": rec.justification,
-                "expected_impact": rec.expected_impact,
-                "selectivity": rec.selectivity,
-                "sandbox_verdict": _verdict_or_none(sandbox_validation),
-                "sandbox_reason": _reason_or_none(sandbox_validation),
-                "sandbox_plan_comparison": _plan_comparison_or_none(sandbox_validation),
-                "explanation": {
-                    "text": explanation.explanation,
-                    "suggested_rewrite": explanation.suggested_rewrite,
-                    "confidence": explanation.confidence,
-                    "source": explanation.source,
-                },
-            }
-        )
+        sandbox_verdict = _verdict_or_none(sandbox_validation)
+        rec_payload = {
+            "kind": rec.kind,
+            "table": rec.table,
+            "column": rec.column,
+            "index_method": rec.index_method,
+            "index_name": rec.index_name,
+            "create_index_sql": rec.create_index_sql,
+            "justification": rec.justification,
+            "expected_impact": rec.expected_impact,
+            "selectivity": rec.selectivity,
+            "sandbox_verdict": sandbox_verdict,
+            "sandbox_reason": _reason_or_none(sandbox_validation),
+            "sandbox_plan_comparison": _plan_comparison_or_none(sandbox_validation),
+            "explanation": {
+                "text": explanation.explanation,
+                "suggested_rewrite": explanation.suggested_rewrite,
+                "confidence": explanation.confidence,
+                "source": explanation.source,
+            },
+        }
+        rec_payload["validations"] = _compute_validations(rec_payload, snapshot, sandbox_verdict)
+        recommendations_out.append(rec_payload)
 
     # --- Procesar findings (detectores sin recomendador formal) -------
     for code, detection in sorted(detections.items()):
@@ -350,6 +353,7 @@ def analyze_query(
             continue  # ya procesado arriba via recommend()
 
         finding = _build_finding(code, detection)
+        finding["validations"] = _compute_validations(finding, snapshot, sandbox_verdict=None)
         recommendations_out.append(finding)
 
     return _result(detections_out, recommendations_out, errors)
@@ -729,6 +733,163 @@ def _fallback_explanation() -> Explanation:
         confidence=0.0,
         source="template",
     )
+
+
+# =====================================================================
+# E9 — Validaciones R3 expuestas por recomendación
+# =====================================================================
+# La regla R3 obliga a validar las propuestas (de motor o LLM) antes de
+# mostrarlas. El frontend de E9 las renderea como 4 indicadores visibles
+# por tarjeta — la respuesta visual a "¿cómo evitan alucinaciones?".
+#
+# Convención del valor por validación:
+#   True  → ✓ pasó                (verde en la UI)
+#   False → ✗ falló               (rojo en la UI)
+#   None  → no aplica para esta   (gris/neutral en la UI)
+#           recomendación
+#
+# El backend computa las 4 honestamente a partir del payload de la
+# recomendación y del snapshot. No inventamos campos en el frontend.
+# =====================================================================
+
+
+def _compute_validations(
+    rec: dict[str, Any],
+    snapshot: dict[str, Any],
+    sandbox_verdict: str | None,
+) -> dict[str, bool | None]:
+    """Calcula los 4 indicadores R3 para una recomendación (E9).
+
+    Las 4 validaciones, en el mismo orden que el backlog:
+
+    1. ``schema_ok`` — tabla y columna referenciadas existen en el snapshot.
+    2. ``no_duplicate_index`` — el ``CREATE INDEX`` propuesto no duplica
+       un índice ya existente sobre la misma (tabla, columna, método).
+       N/A para ANALYZE, findings y otros kinds (no proponen índice nuevo).
+    3. ``syntax_valid`` — el SQL final parsea con sqlglot (dialect=postgres).
+       N/A cuando no hay SQL (findings sin sugerencia).
+    4. ``sandbox_improves`` — derivado del ``sandbox_verdict``: validated→✓,
+       discarded→✗, skipped/None→N/A.
+    """
+    return {
+        "schema_ok": _check_schema_ok(rec, snapshot),
+        "no_duplicate_index": _check_no_duplicate_index(rec, snapshot),
+        "syntax_valid": _check_syntax_valid(rec),
+        "sandbox_improves": _check_sandbox_improves(sandbox_verdict),
+    }
+
+
+def _check_schema_ok(rec: dict[str, Any], snapshot: dict[str, Any]) -> bool | None:
+    """La tabla (y columna si aplica) existen en el snapshot.
+
+    ``None`` si la recomendación no apunta a una tabla concreta (caso
+    teórico — los detectores actuales siempre la traen).
+    """
+    table = rec.get("table") or ""
+    if not table:
+        return None
+    table_meta = snapshot.get("schema", {}).get(table)
+    if table_meta is None:
+        return False
+    column = rec.get("column") or ""
+    if not column:
+        return True
+    columns = {c.get("name") for c in table_meta.get("columns", [])}
+    return column in columns
+
+
+def _check_no_duplicate_index(rec: dict[str, Any], snapshot: dict[str, Any]) -> bool | None:
+    """No existe ya un índice cubriendo (tabla, columna, método).
+
+    Solo aplica a ``kind="create_index"``: ANALYZE / findings /
+    create_partial_index / create_statistics no proponen un índice
+    "nuevo" comparable a uno existente — devuelven ``None`` (N/A).
+    """
+    if rec.get("kind") != "create_index":
+        return None
+    table = rec.get("table") or ""
+    column = rec.get("column") or ""
+    method = (rec.get("index_method") or "").lower()
+    table_meta = snapshot.get("schema", {}).get(table)
+    if table_meta is None:
+        return None
+    for idx in table_meta.get("indexes", []):
+        cols = idx.get("columns", []) or []
+        idx_method = (idx.get("method") or "btree").lower()
+        if cols and cols[0] == column and idx_method == method:
+            return False
+    return True
+
+
+# Verbos SQL que el motor o un LLM saneado podrían producir como SQL
+# principal de una recomendación. La validación se hace por la "cabeza"
+# del statement para no depender del fallback laxo de sqlglot a
+# `Command` (que acepta basura como `CREATE !! INDEX …` sin error).
+_VALID_SQL_HEAD = re.compile(
+    r"^\s*(?:"
+    r"CREATE\s+(?:UNIQUE\s+)?(?:INDEX|STATISTICS|TABLE|VIEW|MATERIALIZED\s+VIEW)"
+    r"|ANALYZE"
+    r"|VACUUM"
+    r"|SET"
+    r"|SELECT"
+    r"|WITH"
+    r"|EXPLAIN"
+    r"|ALTER"
+    r"|DROP"
+    r"|INSERT"
+    r"|UPDATE"
+    r"|DELETE"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _check_syntax_valid(rec: dict[str, Any]) -> bool | None:
+    """``create_index_sql`` es sintácticamente plausible. ``None`` si no
+    hay SQL.
+
+    La validación combina dos chequeos para sortear una limitación de
+    sqlglot: el parser hace fallback a ``exp.Command`` ante sintaxis
+    desconocida en vez de lanzar — esto deja pasar basura como
+    ``CREATE !! INDEX …``. Por eso:
+
+    1. La cabeza del statement debe matchear ``_VALID_SQL_HEAD`` (verbo
+       SQL conocido seguido del objeto correcto). Esto descarta
+       ``CREATE !! …``, ``CREATE blah …`` y cabeza no-SQL.
+    2. Luego sqlglot lo intenta parsear; cualquier ``ParseError`` u
+       otra excepción del tokenizador marca el indicador en rojo.
+
+    Aplica al SQL principal que la tarjeta entrega vía "Copiar SQL". El
+    ``suggested_rewrite`` del LLM se publica aparte; si en el futuro
+    también queremos exponer su validación, hay que añadir un quinto
+    indicador.
+    """
+    sql = (rec.get("create_index_sql") or "").strip()
+    if not sql:
+        return None
+    if not _VALID_SQL_HEAD.match(sql):
+        return False
+    try:
+        sqlglot.parse_one(sql, dialect="postgres", error_level=sqlglot.ErrorLevel.RAISE)
+        return True
+    except Exception:  # noqa: BLE001 — cualquier ParseError/Tokenizer cuenta
+        return False
+
+
+def _check_sandbox_improves(sandbox_verdict: str | None) -> bool | None:
+    """Mapea ``sandbox_verdict`` a un booleano para el indicador R3 #4.
+
+    ``"validated"`` → True (el planner usa el nuevo índice).
+    ``"discarded"`` → False (el planner sigue ignorando el cambio).
+    ``"skipped_no_sandbox_signal"`` / ``None`` → ``None`` (no aplica:
+    ANALYZE no se valida en sandbox; sin sandbox configurado no hubo
+    señal que medir).
+    """
+    if sandbox_verdict == "validated":
+        return True
+    if sandbox_verdict == "discarded":
+        return False
+    return None
 
 
 def _verdict_or_none(v: ValidationResult | None) -> str | None:

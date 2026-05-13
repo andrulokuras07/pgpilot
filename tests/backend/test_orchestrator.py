@@ -26,7 +26,7 @@ import httpx
 import psycopg
 import pytest
 
-from backend.orchestrator import AnalyzeError, analyze_query
+from backend.orchestrator import AnalyzeError, _compute_validations, analyze_query
 
 # --- fakes minimalistas --------------------------------------------
 
@@ -770,3 +770,226 @@ def test_run_explain_error_inesperado_traduce_a_500(snapshot: dict[str, Any]) ->
 
     assert exc_info.value.status_code == 500
     assert "broken" not in exc_info.value.message  # no filtra el detalle interno
+
+
+# --- E9: 4 indicadores de validación R3 por recomendación ---------
+
+
+def test_validations_analyze_pasa_schema_y_sintaxis_sandbox_na(
+    snapshot: dict[str, Any],
+) -> None:
+    """E9 hecho-cuando — caso ANALYZE (índice ya existe, sin sandbox).
+
+    La tarjeta debe llevar las 4 validaciones. Para ANALYZE,
+    ``no_duplicate_index`` y ``sandbox_improves`` son N/A por
+    construcción; ``schema_ok`` y ``syntax_valid`` deben pasar.
+    """
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    out = analyze_query(
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    formal_recs = [r for r in out["recommendations"] if r["kind"] != "finding"]
+    rec = formal_recs[0]
+    assert rec["kind"] == "analyze"
+
+    validations = rec["validations"]
+    assert set(validations) == {
+        "schema_ok",
+        "no_duplicate_index",
+        "syntax_valid",
+        "sandbox_improves",
+    }
+    assert validations["schema_ok"] is True
+    assert validations["syntax_valid"] is True
+    assert validations["no_duplicate_index"] is None  # ANALYZE no propone índice nuevo
+    assert validations["sandbox_improves"] is None  # sin sandbox configurado
+
+
+def test_validations_sandbox_validated_marca_improves_true(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Con sandbox que valida (Seq Scan → Index Scan), el indicador #4
+    queda en True."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    from sandbox import ValidationResult
+
+    def fake_validate(*args: Any, **kwargs: Any) -> ValidationResult:
+        return ValidationResult(
+            verdict="validated",
+            reason="cambió a Index Scan",
+            node_type_before="Seq Scan",
+            node_type_after="Index Scan",
+            cost_before=12345.0,
+            cost_after=42.0,
+            plan_rows_before=500_000,
+            plan_rows_after=2_500,
+        )
+
+    monkeypatch.setattr("backend.orchestrator.validate_index_recommendation", fake_validate)
+
+    out = analyze_query(
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+        sandbox_pool=object(),
+    )
+
+    rec = [r for r in out["recommendations"] if r["kind"] != "finding"][0]
+    assert rec["validations"]["sandbox_improves"] is True
+
+
+def test_validations_sandbox_discarded_marca_improves_false(
+    monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]
+) -> None:
+    """Cuando el sandbox descarta (planner ignora el cambio), el
+    indicador #4 queda en False — el frontend pintaría el indicador rojo
+    y el usuario sabe que la recomendación NO se confirmó."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    from sandbox import ValidationResult
+
+    def fake_validate(*args: Any, **kwargs: Any) -> ValidationResult:
+        return ValidationResult(
+            verdict="discarded",
+            reason="planner siguió en Seq Scan",
+            node_type_before="Seq Scan",
+            node_type_after="Seq Scan",
+            cost_before=12345.0,
+            cost_after=12345.0,
+            plan_rows_before=500_000,
+            plan_rows_after=500_000,
+        )
+
+    monkeypatch.setattr("backend.orchestrator.validate_index_recommendation", fake_validate)
+
+    out = analyze_query(
+        query="SELECT id, author_id FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+        sandbox_pool=object(),
+    )
+
+    rec = [r for r in out["recommendations"] if r["kind"] != "finding"][0]
+    assert rec["validations"]["sandbox_improves"] is False
+
+
+def test_validations_findings_tambien_llevan_los_4_indicadores(
+    snapshot: dict[str, Any],
+) -> None:
+    """Cada tarjeta de recomendación (formal o finding) debe llevar
+    el bloque ``validations`` con las 4 claves. Para findings sin
+    índice propuesto, ``no_duplicate_index`` y ``sandbox_improves`` son
+    N/A (None)."""
+    pool = FakePool(SEQ_SCAN_PLAN)
+
+    out = analyze_query(
+        query="SELECT * FROM posts WHERE author_id = 42",
+        appdb_pool=pool,
+        snapshot=snapshot,
+    )
+
+    findings = [r for r in out["recommendations"] if r["kind"] == "finding"]
+    assert findings, "Esperaba al menos un finding (D9 select_star)"
+    for finding in findings:
+        validations = finding["validations"]
+        assert set(validations) == {
+            "schema_ok",
+            "no_duplicate_index",
+            "syntax_valid",
+            "sandbox_improves",
+        }
+        # findings no proponen CREATE INDEX → indicador #2 siempre N/A
+        assert validations["no_duplicate_index"] is None
+        # findings no pasan por sandbox → indicador #4 siempre N/A
+        assert validations["sandbox_improves"] is None
+
+
+def test_compute_validations_directo_cubre_casos_de_falla() -> None:
+    """Tests directos del helper para los casos que el motor no produce
+    naturalmente (índice duplicado, SQL roto, tabla fuera del snapshot).
+
+    Los tests anteriores cubren los casos felices vía la pipeline real;
+    estos cubren las ramas negativas — críticas para que la UI marque
+    rojo cuando una recomendación NO debería mostrarse.
+    """
+    snapshot = {
+        "schema": {
+            "public.posts": {
+                "schema": "public",
+                "name": "posts",
+                "columns": [{"name": "id"}, {"name": "author_id"}],
+                "indexes": [
+                    {
+                        "name": "idx_posts_author_id",
+                        "columns": ["author_id"],
+                        "method": "btree",
+                        "is_unique": False,
+                        "is_primary": False,
+                    }
+                ],
+            }
+        },
+    }
+
+    # 1. Índice duplicado → no_duplicate_index=False (rojo)
+    rec_duplicado = {
+        "kind": "create_index",
+        "table": "public.posts",
+        "column": "author_id",
+        "index_method": "btree",
+        "create_index_sql": "CREATE INDEX idx_posts_author_id_v2 ON public.posts (author_id);",
+    }
+    validations = _compute_validations(rec_duplicado, snapshot, sandbox_verdict=None)
+    assert validations["schema_ok"] is True
+    assert validations["no_duplicate_index"] is False
+    assert validations["syntax_valid"] is True
+
+    # 2. SQL sintácticamente inválido → syntax_valid=False (rojo)
+    rec_sql_roto = {
+        "kind": "create_index",
+        "table": "public.posts",
+        "column": "id",
+        "index_method": "btree",
+        "create_index_sql": "CREATE !! INDEX rota ON public.posts (",
+    }
+    validations = _compute_validations(rec_sql_roto, snapshot, sandbox_verdict=None)
+    assert validations["syntax_valid"] is False
+
+    # 3. Tabla no existe en el snapshot → schema_ok=False (rojo)
+    rec_tabla_fantasma = {
+        "kind": "create_index",
+        "table": "public.no_existe",
+        "column": "x",
+        "index_method": "btree",
+        "create_index_sql": "CREATE INDEX foo ON public.no_existe (x);",
+    }
+    validations = _compute_validations(rec_tabla_fantasma, snapshot, sandbox_verdict=None)
+    assert validations["schema_ok"] is False
+
+    # 4. Columna no existe en el snapshot → schema_ok=False (rojo)
+    rec_col_fantasma = {
+        "kind": "create_index",
+        "table": "public.posts",
+        "column": "no_existe",
+        "index_method": "btree",
+        "create_index_sql": "CREATE INDEX foo ON public.posts (no_existe);",
+    }
+    validations = _compute_validations(rec_col_fantasma, snapshot, sandbox_verdict=None)
+    assert validations["schema_ok"] is False
+
+    # 5. sandbox_verdict="skipped_no_sandbox_signal" → sandbox_improves=None (N/A)
+    rec_skipped = {
+        "kind": "analyze",
+        "table": "public.posts",
+        "column": "author_id",
+        "create_index_sql": "ANALYZE public.posts;",
+    }
+    validations = _compute_validations(
+        rec_skipped, snapshot, sandbox_verdict="skipped_no_sandbox_signal"
+    )
+    assert validations["sandbox_improves"] is None

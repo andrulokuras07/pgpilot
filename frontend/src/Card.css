@@ -220,6 +220,71 @@
   color: #9a9a9a;
 }
 
+/* --- Indicadores de validación R3 (E9) ---------------------------- */
+/* Cuatro píldoras por tarjeta de recomendación: schema OK, no duplica
+ * índice, sintaxis válida, sandbox confirma mejora. Cada una en uno de
+ * tres estados: pass (verde), fail (rojo), N/A (gris). Es la respuesta
+ * visual a "¿cómo evitan alucinaciones?" del Q&A del Demo Day. */
+
+.card-validations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #1e1e1e;
+  border: 1px solid #2d2d30;
+  border-radius: 2px;
+  padding: 8px 10px;
+}
+
+.card-validations-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #858585;
+  font-weight: 600;
+}
+
+.card-validations-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.validation-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 500;
+  cursor: help;
+}
+
+.validation-icon {
+  font-family: "Menlo", "Monaco", "Consolas", monospace;
+  font-weight: 700;
+}
+
+.validation-pass {
+  background: #1e3a2a;
+  color: #4ec9b0;
+  border-color: #2d5a44;
+}
+
+.validation-fail {
+  background: #3a2424;
+  color: #f48771;
+  border-color: #5a3434;
+}
+
+.validation-na {
+  background: #2d2d30;
+  color: #858585;
+  border-color: #3c3c3c;
+}
+
 /* --- Detalles colapsables ----------------------------------------- */
 
 .card-details {

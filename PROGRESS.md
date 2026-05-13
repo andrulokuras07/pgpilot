@@ -115,7 +115,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ### Avances
 
 #### F2 — Documento de arquitectura en `/docs/arquitectura.md`
-- **Autor:** [PONER TU NOMBRE]. Rama `docs/F2-arquitectura`.
+- **Autor:** Regina Valenzuela. Rama `docs/F2-arquitectura`.
 - **Archivos:**
   `docs/arquitectura.md` (nuevo — documento de 9 secciones orientado a
   evaluadores del curso y a developers externos: visión general,
@@ -244,7 +244,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ### Avances
 
 #### F1 — README principal del repo en `README.md` (raíz)
-- **Autor:** [PONER TU NOMBRE]. Rama `docs/F1-readme`.
+- **Autor:** Regina Valenzuela. Rama `docs/F1-readme`.
 - **Archivos:**
   `README.md` raíz (reescrito completo — antes era el placeholder
   mínimo de E11 que enlazaba a los docs publicados; ahora es la guía
@@ -430,7 +430,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
   - Si el modelo Claude default (`DEFAULT_MODEL` en `ia/llm.py`)
     cambia, actualizar la sección 11 ("Uso de IA en el desarrollo").
 
-## 2026-05-14 (F17 — catálogo de patterns final)
+## 2026-05-13 (F17 — catálogo de patterns final)
 
 ### Avances
 

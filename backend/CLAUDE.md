@@ -14,7 +14,8 @@ FastAPI que orquesta los módulos del proyecto y expone los endpoints que consum
 - ✅ C9 — `/analyze` orquesta la pipeline real (parser + C1 + C2 + C3 + C4-C7)
 - ✅ C11 — `/analyze` añade `sandbox_plan_comparison` por recomendación
   (datos del `ValidationResult` que el frontend usa para el before/after)
-- ⬜ E3 — endpoint `/workload`
+- ✅ E3 — endpoint `POST /workload` (recibe CSV/JSON, devuelve top 10)
+- ✅ E5 — cleanup de schemas zombies del sandbox al startup
 
 ---
 

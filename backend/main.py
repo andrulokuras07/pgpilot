@@ -33,7 +33,8 @@ from conector import (
     create_pool,
     extract_snapshot,
 )
-from sandbox import SandboxConfig, create_sandbox_pool
+from sandbox import SandboxConfig, cleanup_zombie_schemas, create_sandbox_pool
+from workload import parse_pg_stat_statements, score_workload
 
 log = logging.getLogger("pgpilot.backend")
 
@@ -114,6 +115,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         sandbox_pool = _sandbox_pool_from_env()
         if sandbox_pool is not None:
+            zombies = cleanup_zombie_schemas(sandbox_pool)
+            if zombies:
+                log.info(
+                    "Limpiados %d schemas zombies del sandbox: %s",
+                    len(zombies),
+                    ", ".join(zombies),
+                )
             log.info("Sandbox pool conectado.")
         else:
             log.info(
@@ -203,6 +211,53 @@ def analyze(req: AnalyzeRequest, request: Request) -> AnalyzeResponse:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     return AnalyzeResponse(**body)
+
+
+class WorkloadEntry(BaseModel):
+    query: str
+    calls: int
+    total_exec_time: float
+    mean_exec_time: float
+    rows: int
+    score: float
+    rank: int
+
+
+class WorkloadResponse(BaseModel):
+    top: list[WorkloadEntry] = Field(default_factory=list)
+
+
+@app.post("/workload", response_model=WorkloadResponse)
+async def workload(request: Request) -> WorkloadResponse:
+    """Recibe un archivo pg_stat_statements (CSV o JSON) y devuelve top 10."""
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        upload = form.get("file")
+        if upload is None:
+            raise HTTPException(status_code=422, detail="Se requiere un archivo 'file'.")
+        raw = (await upload.read()).decode("utf-8", errors="replace")
+    else:
+        raw = (await request.body()).decode("utf-8", errors="replace")
+
+    if not raw.strip():
+        raise HTTPException(status_code=422, detail="El archivo está vacío.")
+
+    try:
+        entries = parse_pg_stat_statements(raw)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se pudo parsear el archivo: {exc}",
+        ) from exc
+
+    if not entries:
+        return WorkloadResponse(top=[])
+
+    scored = score_workload(entries, top_n=10)
+    return WorkloadResponse(
+        top=[WorkloadEntry(**s.__dict__) for s in scored]
+    )
 
 
 @app.get("/health")

@@ -105,7 +105,46 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
-## 2026-05-12 
+## 2026-05-12
+
+### Avances
+
+#### E1+E2+E3+E4+E5+E6 — Workload Analysis + Sandbox hardening
+- **Autor:** Diego. Rama `feat/E1-E6-workload-sandbox`.
+- **Archivos:**
+  `workload/__init__.py` (nuevo, exporta API pública),
+  `workload/parser.py` (nuevo, E1 — parser CSV/JSON de pg_stat_statements),
+  `workload/scoring.py` (nuevo, E2 — score por total_exec_time, top N),
+  `workload/CLAUDE.md` (nuevo, documentación del módulo),
+  `backend/main.py` (E3 — endpoint POST /workload + E5 cleanup al startup),
+  `frontend/src/WorkloadTab.jsx` (nuevo, E4 — tab de Workload Analysis),
+  `frontend/src/WorkloadTab.css` (nuevo, estilos del tab),
+  `frontend/src/App.jsx` (E4 — navegación por tabs, integración workload→analyze),
+  `frontend/src/App.css` (estilos de tabs),
+  `sandbox/setup.py` (E5 — cleanup_zombie_schemas + E6 — timeout en setup/drop),
+  `sandbox/validator.py` (E6 — timeout en CREATE INDEX),
+  `sandbox/__init__.py` (exporta cleanup_zombie_schemas),
+  `tests/workload/test_workload_parser.py` (nuevo, 7 tests E1),
+  `tests/workload/test_workload_scoring.py` (nuevo, 5 tests E2),
+  `tests/backend/test_workload.py` (nuevo, 5 tests E3).
+- **Notas:**
+  E1: parser con heurística de formato (JSON si empieza con `[`, CSV si no).
+  Soporta nombres de columna de PG < 13 (`total_time`/`mean_time`).
+  E2: score normalizado 0..1 sobre total_exec_time, top 10 por default.
+  E3: endpoint acepta multipart (file upload) o raw body. Requiere
+  `python-multipart` instalado.
+  E4: tab "Workload Analysis" con upload CSV/JSON, tabla clickeable que
+  abre la query en el flujo /analyze.
+  E5: `cleanup_zombie_schemas(pool)` dropea schemas con prefijo `analysis_`
+  al startup del backend.
+  E6: `SET LOCAL statement_timeout` en setup, drop, CREATE INDEX y EXPLAIN
+  — cada operación tiene 5s hard limit vía Postgres nativo.
+- **Tests:** ✅ Verde (17 tests nuevos). 3 tests pre-existentes fallan en
+  main (D19/D20), no relacionados con estos cambios.
+
+---
+
+## 2026-05-12 (entrada anterior)
 
 ### Avances
 

@@ -10,8 +10,45 @@
   border-bottom: 1px solid #3c3c3c;
   padding: 12px 20px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+}
+
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.tab-btn {
+  background: transparent;
+  color: #858585;
+  border: none;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-family: inherit;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tab-btn:hover {
+  background: #2d2d30;
+  color: #cccccc;
+}
+
+.tab-active {
+  background: #37373d;
+  color: #ffffff;
+}
+
+.workload-main {
+  grid-template-columns: 1fr;
+}
+
+.workload-pane {
+  padding: 16px 24px;
+  overflow: auto;
 }
 
 .title {

@@ -113,6 +113,54 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
+#### F3 — Investigación competitiva
+- **Autor:** Alexander. Rama `docs/F3-investigacion-competitiva`.
+- **Archivos:**
+  `business/competencia.md` (nuevo, documento principal en Markdown,
+  fuente de verdad versionada),
+  `business/competencia.docx` (nuevo, mismo contenido en Word para
+  entrega formal),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** investigación de los 4 competidores que pide el ticket F3 del
+  backlog (pganalyze, EverSQL ahora dentro de Aiven, DBtune, pgMustard) más
+  Datadog DBM mencionado como contexto de mercado sin entrar en la tabla
+  comparativa. El documento sigue la regla F3 de "no afirmar superioridad
+  en todas las dimensiones": incluye sección dedicada (§5) a dónde la
+  competencia gana sobre PgPilot — track record de pganalyze, cobertura
+  MySQL de EverSQL, scope de configuración de DBtune, precio de pgMustard.
+  - **Tabla comparativa:** 11 dimensiones × 5 productos. Cubre foco
+    principal, BD soportadas, precio entrada, modelo de deployment,
+    mecanismo de detección, validación de recomendación, sanitización,
+    modo offline, idioma, workload analysis y detección de anti-patterns
+    explícita.
+  - **Diferenciadores defendibles identificados para PgPilot:** motor
+    determinístico transparente (cliente puede auditar reglas), sanitización
+    fuerte de literales pre-LLM, validación en sandbox antes de mostrar
+    recomendación, foco LATAM con español + modo offline (bundle JSON
+    sin conexión a BD productiva).
+  - **Pricing investigado:** pganalyze $149 USD/mes/servidor (Production),
+    $399 USD/mes (Scale 4 servers), Enterprise custom; EverSQL gratuito
+    desde la adquisición de Aiven; DBtune trial hasta 3 DB sin pricing
+    comercial público; pgMustard 95 €/año/usuario; Datadog DBM $70/host.
+    Sugerencia para PgPilot: $29 USD/dev/mes posicionado entre pgMustard
+    y pganalyze.
+  - **Mantenimiento de los dos artefactos:** el `.md` es la fuente
+    versionada para el repo y el `.docx` es el entregable formal.
+    Ambos contienen la misma investigación; si se actualiza el `.md`,
+    reflejar los cambios manualmente también en el `.docx` para que
+    no diverjan (queda nota explícita al final del `.md`).
+- **Cumplimiento de reglas:**
+  - R15: entrada en PROGRESS.md incluida en el mismo commit. No aplica
+    actualizar CLAUDE.md de ningún módulo porque F3 es documentación
+    de negocio, no toca API de ningún módulo del producto.
+  - Honestidad F3: §5 lista las desventajas de PgPilot frente a cada
+    competidor en lugar de pintar el producto como superior universal.
+- **Pendiente vigilar:** los precios y features pueden cambiar de aquí a
+  Demo Day (14 de mayo). Si en el pitch el evaluador pregunta por algún
+  dato específico, revisar el sitio del competidor el día anterior.
+  F11 (modelo de pricing) y F14 (diferenciador defendible) dependen de
+  esta investigación.
+
 ## 2026-05-13 (entrada posterior)
 
 ### Avances

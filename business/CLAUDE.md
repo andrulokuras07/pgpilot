@@ -11,14 +11,15 @@ Documentos de discovery, validación de mercado y preparación para el Demo Day.
 - ✅ F3 — Investigación competitiva (`competencia.md` + `.docx`)
 - ✅ F4 — Lista de 5 candidatos a entrevistar (`lista-entrevistados.md`)
 - ✅ F5 — Guion de entrevista (`guion-entrevistas.md`)
+- ✅ F6 — Entrevista 1: Carlos Orellán, DBA (`entrevista-1.md`)
+- ⬜ F7-F8 — Entrevistas 2 y 3 pendientes
+- ✅ F9 — Definición de problema con datos (`problema.md`)
+- ✅ F10 — User persona detallado (`persona.md`)
 - ✅ F11 — Modelo de pricing (`pricing.md` + `.docx`)
 - ✅ F12 — TAM/SAM/SOM (`mercado.md` + `.docx`)
 - ✅ F13 — Plan Go-to-Market (`gtm.md` + `.docx`)
 - ✅ F14 — Diferenciador defendible (`diferenciador.md` + `.docx`)
-- ⬜ F6-F8 — Entrevistas ejecutadas y documentadas
-- ⬜ F9 — Definición de problema con datos
-- ⬜ F10 — User persona detallado
-- ⬜ F15 — Documento de negocio consolidado
+- 🟡 F15 — Documento de negocio consolidado (`negocio.md` + `negocio.docx` redactados con F3/F6/F9/F10/F11/F12/F13/F14 integrados. §2.2 con persona Andrés Villanueva, §2.3 con frecuencias cuantificadas de Carlos + Andrés, §3.1 con Carlos Orellán y filas `[PENDIENTE]` para F7/F8, §3.3 con 7 insights validados + 3 hipótesis pendientes + 4 cambios de producto/pricing/GTM derivados. §10 sigue con `[PENDIENTE: COMPLETAR DATOS DEL EQUIPO]` para nombres y reparto técnico. Quedará 100% al cerrar F7/F8 y llenar §10.)
 
 ---
 
@@ -31,10 +32,14 @@ business/
 ├── competencia.md / .docx   # F3 — investigación competitiva
 ├── lista-entrevistados.md   # F4 — 5 candidatos con criterios de selección
 ├── guion-entrevistas.md     # F5 — 9 preguntas para entrevistas de discovery
+├── entrevista-1.md          # F6 — Entrevista Carlos Orellán (DBA)
+├── problema.md              # F9 — Definición del problema con datos
+├── persona.md               # F10 — User persona detallado
 ├── pricing.md / .docx       # F11 — modelo de pricing (4 tiers)
 ├── mercado.md / .docx       # F12 — TAM/SAM/SOM con metodología y fuentes
 ├── gtm.md / .docx           # F13 — plan go-to-market (primeros 10 clientes)
-└── diferenciador.md / .docx # F14 — diferenciador defendible
+├── diferenciador.md / .docx # F14 — diferenciador defendible
+└── negocio.md / .docx       # F15 — documento de negocio consolidado (Plantilla 3 de la entrega oficial; .docx llena la plantilla del profesor preservando headings y estilos)
 ```
 
 ---
@@ -42,7 +47,7 @@ business/
 ## Convenciones
 
 ### Documentos con entregable formal
-Los documentos que se entregan al evaluador o se citan en pitches (F3, F11, F12, F13, F14) viven como pareja `.md` + `.docx`:
+Los documentos que se entregan al evaluador o se citan en pitches (F3, F11, F12, F13, F14, F15) viven como pareja `.md` + `.docx`:
 
 - **`.md`** es la fuente versionada en el repo, fácil de revisar en GitHub y editar.
 - **`.docx`** es el entregable de presentación formal (Word con tablas formateadas, encabezados, colores).
@@ -50,7 +55,7 @@ Los documentos que se entregan al evaluador o se citan en pitches (F3, F11, F12,
 - Los `.docx` se generan localmente con un script temporal (python-docx) que se borra antes del commit; el equipo decidió no versionar generadores de docx para mantener el repo limpio (ver decisión del 2026-05-13 en `PROGRESS.md`).
 
 ### Documentos de proceso interno
-Documentos de proceso (F4 lista de candidatos, F5 guion de entrevistas, F6-F8 entrevistas) viven solo como `.md` — no necesitan entregable Word formal.
+Documentos de proceso (F4 lista de candidatos, F5 guion de entrevistas, F6-F8 entrevistas, F9 problema, F10 persona) viven solo como `.md` — no necesitan entregable Word formal.
 
 ---
 
@@ -61,7 +66,7 @@ Crear `business/entrevista-N.md` con: nombre y rol del entrevistado, fecha, resp
 
 ### Agregar documentación de negocio nueva
 1. Crear el archivo `.md` correspondiente en esta carpeta.
-2. Si es entregable formal, generar también el `.docx` con un script temporal local (basado en python-docx, mismo patrón que F3/F11/F12/F13/F14). Borrar el script antes del commit.
+2. Si es entregable formal, generar también el `.docx` con un script temporal local (basado en python-docx, mismo patrón que F3/F11/F12/F13/F14/F15). Borrar el script antes del commit.
 3. Actualizar la sección "Estado actual" de este archivo (`business/CLAUDE.md`) marcando el ticket como ✅.
 4. Actualizar la sección "Estructura interna" si el nombre del archivo es nuevo.
 5. Agregar entrada en `PROGRESS.md` (regla R15).

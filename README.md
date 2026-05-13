@@ -20,6 +20,10 @@ Guías por módulo orientadas a uso externo:
   de EXPLAIN, los 19 detectores con sus reglas, recomendador de
   índices con filtro de selectividad, y cómo agregar un detector
   nuevo.
+- [`docs/ia.md`](docs/ia.md) — capa de integración con el LLM:
+  sanitización de literales antes de cualquier llamada, prompt
+  pedagógico con guardrails, validación Pydantic + cruzada de la
+  respuesta, modo "LLM apagado" con plantillas y logs estructurados.
 - [`docs/patterns/`](docs/patterns/) — catálogo de anti-patterns,
   un archivo `.md` por detector implementado.
 - [`docs/decisiones.md`](docs/decisiones.md) — registro vivo de

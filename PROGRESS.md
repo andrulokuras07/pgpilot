@@ -109,6 +109,104 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (E12 — documentación de la capa de IA)
+
+### Avances
+
+#### E12 — Documentación de la capa de IA en `/docs/ia.md`
+- **Autor:** Emilio. Rama `docs/E12-ia`.
+- **Archivos:**
+  `docs/ia.md` (nuevo — guía completa orientada a externos: 14
+  secciones cubriendo sanitización con tabla de los 5 tipos de
+  literal, prompt al LLM con system-prompt y guardrails,
+  validaciones Pydantic + cruzada con tablas de reglas, modo "LLM
+  apagado" con plantillas, los 5 caminos del orquestador, logs
+  estructurados con schema JSON, sección dedicada "Garantías para
+  el usuario" para Q&A del Demo Day, configuración y env vars,
+  6 limitaciones honestas, cómo extender en 4 direcciones,
+  referencias),
+  `README.md` raíz (suma entrada para `docs/ia.md`),
+  `docs/README.md` (suma entrada para `ia.md`; quita `/ia` de los
+  módulos pendientes),
+  `ia/CLAUDE.md` (callout en cabecera apuntando al doc externo +
+  recordatorio R15 + nota de que el doc es crítico para defensa),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** El backlog marca explícitamente este doc como
+  **"Crítico para defensa"** — el doc tiene una sección dedicada
+  (§10 "Garantías para el usuario") con las 3 respuestas
+  contractuales que el Demo Day Q&A va a pedir:
+  - **Privacidad (R4):** sanitización antes de cualquier llamada,
+    test de privacidad B11 con `grep` externo, logs guardan
+    `sanitized_sql` no SQL crudo, `build_explanation_prompt` lanza
+    `TypeError` si recibe string crudo (defensa en profundidad).
+  - **Anti-alucinaciones (R3 + R14):** Pydantic valida forma (C5),
+    `cross_validate` valida contenido (C6) con 4 reglas, opcional
+    sandbox check, ante cualquier fallo se cae a plantilla.
+  - **Resiliencia (R5):** 5 escenarios cubiertos (LLM apagado, sin
+    API key, red caída, respuesta basura, validación falla); la
+    pipeline NUNCA crashea por culpa del LLM.
+  - **Diferencia con `ia/CLAUDE.md` interno:** mismo enfoque que
+    E10/E11. El CLAUDE.md interno es para agentes/devs del repo;
+    `docs/ia.md` es para auditores, integradores y futuros
+    mantenedores externos. Es donde un cliente de compliance puede
+    leer "PgPilot sanitiza X tipos de literales con regex Y" y un
+    evaluador del Demo Day puede leer "los 5 caminos posibles del
+    LLM acaban siempre en una `Explanation` válida".
+  - **Diagrama ASCII del pipeline (§2)** muestra el flujo entero:
+    SQL crudo → sanitize → prompt → call_llm → parse_llm_response
+    (Pydantic) → cross_validate → Explanation (con `source` LLM o
+    plantilla). Sin él, el lector externo tiene que reconstruir el
+    flujo leyendo 8 archivos .py distintos.
+  - **Cobertura de API:** las 20 funciones/clases de `ia.__all__`
+    están documentadas con firma, semántica y ejemplo cuando aplica.
+    Las 5 outcomes (`llm_ok`, `llm_disabled`, `llm_error`,
+    `llm_invalid_response`, `cross_validation_failed`) están
+    tabuladas con cuándo se disparan y qué resultado producen.
+    El schema JSON Lines de C8 está reproducido completo, mostrando
+    que `sanitized_sql` (no SQL crudo) y `raw_response_excerpt`
+    (sin literales originales) son los únicos campos sensibles —
+    R4 se mantiene transversalmente, incluso en logs.
+  - **Sin cambios de código ejecutable.** E12 es 100% documentación.
+    Cobertura AppDB v1 sigue en 18/20.
+  - **Verificación de fidelidad** del doc contra código:
+    - 20 entradas en `ia/__init__.py::__all__` — todas documentadas.
+    - 5 tipos de sanitización (`_TYPE_SUFFIX` en `sanitizer.py`):
+      string=1, number=2, date=3, uuid=4, email=5 — coinciden con
+      la tabla §3.
+    - 4 reglas de `cross_validate` (cross_validator.py docstring) —
+      coinciden con la tabla §6.1.
+    - 5 outcomes (`LLMOutcome` Literal en `logs.py`) — coinciden
+      con la tabla §8.2.
+    - 4 env vars (`ANTHROPIC_API_KEY`, `LLM_ENABLED`,
+      `PGPILOT_LLM_LOG_PATH`, `PGPILOT_LLM_LOG_DISABLED`) —
+      coinciden con la tabla §11.1.
+- **Cumplimiento de reglas:**
+  - **R15:** PROGRESS.md + `ia/CLAUDE.md` actualizados en el mismo
+    commit. El callout en `ia/CLAUDE.md` obliga a futuros
+    mantenedores a actualizar `docs/ia.md` cuando cambien API.
+  - **R4 documentado como garantía contractual** en §10.1, con
+    enlaces al test de privacidad B11 y al `TypeError` de defensa
+    en profundidad en `build_explanation_prompt`.
+  - Honestidad (espíritu F3): §12 lista 6 limitaciones reales
+    (sanitizador regex no parser, PII no-literal en comentarios,
+    cross-validator no valida semántica, `max_retries=1`, logs
+    sin rotación, costo por llamada) en vez de pintar el módulo
+    como perfecto.
+  - Nombres significativos (R13): rama `docs/E12-ia`.
+- **Pendiente vigilar:**
+  - Documentación equivalente para `/workload`, `/sandbox`,
+    `/backend`, `/frontend` cuando sus E* lleguen al tope. Patrón
+    establecido en E10/E11/E12 (audiencia externa, garantías
+    explícitas, ejemplos completos, limitaciones honestas).
+  - Si futuro ticket cambia el modelo Claude default (E14, E15)
+    o agrega un patrón de sanitización (ej. teléfonos, RFC),
+    actualizar `docs/ia.md` §3 (patrones) y §11.2 (tests).
+  - Si se modifica el schema de logs JSONL (C8 evolución),
+    actualizar §9.3 — operadores de producción dependen de ese
+    schema para sus dashboards.
+
+---
+
 ## 2026-05-13 (E11 — documentación del motor determinístico)
 
 ### Avances

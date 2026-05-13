@@ -1,5 +1,12 @@
 # Módulo `ia` — Capa de integración con LLM
 
+> **Doc externo:** la guía orientada a personas fuera del equipo vive
+> en `docs/ia.md` (E12) — es crítica para defensa del Demo Day porque
+> documenta las garantías de privacidad (sanitización, R4), las dos
+> capas de validación (Pydantic + cruzada) y el modo "LLM apagado".
+> Si cambias firmas o comportamiento de la API pública listada abajo,
+> actualiza también ese archivo en el mismo commit (R15).
+
 Este módulo es la frontera entre el código determinístico del proyecto y el LLM. Cubre sanitización del SQL antes de enviarlo, construcción del prompt, y validación de la respuesta.
 
 **Regla #1 del proyecto:** el LLM nunca ve la query cruda del usuario. Siempre pasa primero por `sanitize()`.

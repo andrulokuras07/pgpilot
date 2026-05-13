@@ -1,5 +1,10 @@
 # conector — módulo de conexión a la BD del cliente
 
+> **Doc externo:** la guía de uso orientada a personas fuera del equipo
+> vive en `docs/conector.md` (E10). Si cambias firmas o comportamiento
+> de la API pública listada abajo, actualiza también ese archivo en el
+> mismo commit (R15) para no dejar el doc externo divergido.
+
 ## Propósito
 
 Encapsula toda la comunicación con la BD que PgPilot analiza (AppDB en

@@ -110,6 +110,23 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ---
 
 
+## 2026-05-13 (F6 + F9)
+
+### Avances
+
+#### F6 — Entrevista 1: Carlos Orellán (DBA)
+- **Autor:** Diego. Rama `docs/F6-F9-entrevista-problema`.
+- **Archivos:** `business/entrevista-1.md`, `interviews/Interview Carlos Orellán.mp4` (local, excluido por `.gitignore`)
+- **Notas:** Entrevista de customer discovery grabada en videollamada. Respuestas resumidas por pregunta + 7 insights clave. Hallazgos principales: diagnóstico manual y reactivo (logs→CPU→EXPLAIN), SELECT * como anti-pattern real sufrido (D9), integración ideal en CI/CD (pull request), read-only innegociable, CTO como decisor de compra, no usa herramientas especializadas de Postgres.
+
+#### F9 — Definición del problema con datos
+- **Autor:** Diego. Rama `docs/F6-F9-entrevista-problema`.
+- **Archivos:** `business/problema.md`, `business/CLAUDE.md`
+- **Notas:** Definición del problema alimentada por la entrevista F6 y fuentes secundarias (Stack Overflow, Percona, Gartner). Incluye anatomía del ciclo actual vs. PgPilot, segmentos afectados, cuantificación del dolor ($25-200/equipo/mes), ROI estimado, y tabla de 9 hipótesis (6 validadas, 3 pendientes). Pendiente: agregar datos de F7-F8 cuando se realicen.
+- **Tests:** N/A (documentación)
+
+---
+
 ## 2026-05-13 (F2 — documento de arquitectura)
 
 ### Avances

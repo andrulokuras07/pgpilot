@@ -113,7 +113,7 @@ Para contexto (datos públicos o estimados conservadoramente):
 | **pgMustard** | $0.3-1 M USD (95 €/año × pocos miles de devs) | Global anglo | Per-user SaaS |
 | **PgPilot (SOM objetivo año 4)** | $850 K USD | LATAM | Per-developer SaaS |
 
-PgPilot no aspira a competir con pganalyze en US. Aspira a ser **la opción default en LATAM** — un nicho geográfico que ningún competidor atiende con foco. Esa estrategia funciona si la hipótesis "developers LATAM prefieren tooling en español con pricing accesible y modo offline" se valida en las entrevistas F6-F8.
+PgPilot no aspira a competir con pganalyze en US. Aspira a ser **la opción default en LATAM** — un nicho geográfico que ningún competidor atiende con foco. La hipótesis "developers LATAM prefieren tooling en español con pricing accesible y modo offline" tiene señales fuertes en las 3 entrevistas F6/F7/F8 (los 3 son LATAM, ninguno usa pganalyze ni EverSQL, los 3 valoran read-only/privacidad, Raúl F8 pide self-hosted explícito); la prueba comercial real es post-Demo Day en los primeros pilotos.
 
 ---
 
@@ -122,7 +122,7 @@ PgPilot no aspira a competir con pganalyze en US. Aspira a ser **la opción defa
 Honestidad obligada (alineado con el espíritu de F3):
 
 - **Las cifras de developer population en LATAM varían 3× entre fuentes** (Alcor estima 2 M, Howdy estima 7 M incluyendo aspirantes y junior). Usamos la cota baja para no inflar SAM.
-- **El coeficiente de 20 % "willingness to pay" no está validado** — viene de benchmarks generales de developer tools, no de research específico de LATAM Postgres. F6-F8 deben validarlo o ajustarlo.
+- **El coeficiente de 20 % "willingness to pay" no está validado a nivel agregado de mercado** — viene de benchmarks generales de developer tools, no de research específico de LATAM Postgres. Señal a nivel individual: en las 3 entrevistas F6/F7/F8 ninguno objetó el rango $50-200/BD y Raúl (F8) validó explícitamente $200/mes ("yo la compraría sin pensarlo"). Para ajustarlo al alza o a la baja a nivel mercado se necesitan los primeros pilotos pagados post-Demo Day.
 - **El 55 % de Postgres entre developers globales no se mapea automáticamente a LATAM.** Stack Overflow Developer Survey tiene sesgo anglo. En LATAM puede ser mayor (Postgres es default en muchos bootcamps mexicanos y brasileños) o menor (MySQL legado en agencias pequeñas).
 - **El SAM excluye verticales adyacentes que podrían pagar más:** consultoras LATAM que venden optimización Postgres como servicio podrían pagar Enterprise para usar PgPilot como herramienta interna. Si esa hipótesis se valida, SAM efectivo crece 20-30 %.
 - **El TAM global ($800 M) es una estimación cruzada de varios reports.** No hay un número Gartner publicado específico para "Postgres optimization tools." La cota puede estar off por ±40 %.

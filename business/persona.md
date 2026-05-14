@@ -101,9 +101,15 @@ Los problemas de rendimiento no aparecen en desarrollo — aparecen en cierre de
 
 ## Relación con PgPilot
 
-Andrés es el **usuario primario y comprador** en empresas de 10-50 devs. No necesita aprobación del CTO para una suscripción Pro ($29/mes lo gestiona de su presupuesto de herramientas personales o lo expensa con un justificante simple). Para el tier Team, necesita una conversación con el CTO — pero si él está convencido, esa conversación tarda menos de una semana.
+Andrés es el **usuario primario** en empresas de 10-50 devs y, según las entrevistas F6/F7/F8, también **comprador del tier Pro** cuando el rol tiene autonomía de gasto. Las 3 entrevistas reales matizaron el modelo de decisor:
 
-El diferenciador que más resuena con Andrés es la **sanitización automática de literales** (R6/R7 del backlog técnico): puede analizar queries de producción sin exponer datos de clientes. Eso resuelve su bloqueador número uno.
+- **Tech lead con autonomía de compra** (caso F8 Raúl): aprueba hasta ~$500 USD/mes sin pedir permiso al CTO. El tier Pro ($29/dev/mes) y Team (~$245/mes para equipo de 5) entran cómodamente en ese umbral. Andrés encaja aquí.
+- **DBA / dev en equipo con jerarquía** (caso F6 Carlos): la compra la decide el CTO, incluso para herramientas baratas. Si Andrés trabaja en una empresa más estructurada (típicamente >50 devs), pasaría a este modelo.
+- **Decisor dual técnico + gerencial** (caso F7 Jos): líder de infraestructura aprueba lo técnico, gerente aprueba la inversión. Ciclo de compra más largo que los dos anteriores.
+
+Para Andrés en el escenario típico (empresa fintech B2B de 45 personas), el camino de compra del tier Pro es directo: lo expensa con justificante simple o lo paga de su presupuesto de herramientas. Para Team requiere conversación con el CTO — pero si él está convencido, esa conversación tarda menos de una semana. Para Enterprise (>$500/mes con piso $5K USD/año) entra el CTO + finanzas obligatoriamente.
+
+El diferenciador que más resuena con Andrés es la **sanitización automática de literales** (R6/R7 del backlog técnico): puede analizar queries de producción sin exponer datos de clientes. Eso resuelve su bloqueador número uno. Raúl (F8, también fintech) lo reforzó pidiendo además **self-hosted on-premise** como requisito de compliance financiero — eso es el diferenciador que abre el tier Enterprise.
 
 ---
 

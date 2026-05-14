@@ -1,10 +1,10 @@
 # PgPilot — Documento de Negocio
 
-> Plantilla 3 de 3 (Entregables Oficiales del Proyecto Final). Consolida F3 (competencia), F6 (entrevista 1 — Carlos Orellán), F9 (problema), F10 (persona — Andrés Villanueva), F11 (pricing), F12 (mercado), F13 (go-to-market) y F14 (diferenciador) en un solo documento de evaluación.
+> Plantilla 3 de 3 (Entregables Oficiales del Proyecto Final). Consolida F3 (competencia), F6/F7/F8 (3 entrevistas — Carlos Orellán, Jos Lugo, Raúl de la Breña), F9 (problema), F10 (persona — Andrés Villanueva), F11 (pricing), F12 (mercado), F13 (go-to-market) y F14 (diferenciador) en un solo documento de evaluación.
 >
 > Proyecto final SIS2404 — Bases de Datos Avanzadas, Universidad Anáhuac Querétaro. Mayo 2026.
 >
-> **Nota al evaluador:** F6 (1 de 3 entrevistas) ya está documentada en `business/entrevista-1.md` y sus hallazgos se integraron a §2.2 (persona), §2.3 (frecuencia/severidad), §3.1 (resumen entrevistas) y §3.3 (aprendizajes). F7 y F8 (entrevistas 2 y 3) siguen en agendamiento; cuando aterricen se actualizará §3.1 con sus filas correspondientes y se expandirá §3.3 con los hallazgos nuevos. La sección §10 (equipo) lleva un único `[PENDIENTE: COMPLETAR DATOS DEL EQUIPO]` para nombres / matrículas / reparto técnico exacto antes de la entrega final.
+> **Nota al evaluador:** las 3 entrevistas obligatorias de la plantilla están completas y documentadas en `business/entrevista-1.md` (F6 Carlos Orellán, DBA), `entrevista-2.md` (F7 Jos Lugo, ingeniero fullstack) y `entrevista-3.md` (F8 Raúl de la Breña, Tech Lead Backend fintech). Sus hallazgos se integraron a §2.2 (persona), §2.3 (frecuencia/severidad cuantificada con datos 3/3), §3.1 (resumen de entrevistas) y §3.3 (aprendizajes consolidados). La sección §10 (equipo) lleva un único `[PENDIENTE: COMPLETAR DATOS DEL EQUIPO]` para nombres / matrículas / reparto técnico exacto antes de la entrega final.
 
 ---
 
@@ -27,19 +27,19 @@
 
 ## 1. Resumen ejecutivo
 
-**Problema.** Cuando una query Postgres se vuelve lenta en producción, el developer que la escribió rara vez tiene un DBA al lado para diagnosticarla. Las opciones actuales fallan en distintos ejes: pegarle el SQL a ChatGPT viola compliance en sectores regulados (fintech, healthtech, govtech LATAM) y produce alucinaciones de índices y columnas; pganalyze cuesta $149-$399 USD/mes/servidor y excluye a equipos pequeños; pgMustard es manual de un plan a la vez; EverSQL encierra al cliente en el ecosistema Aiven. El resultado: el dev pierde horas leyendo `EXPLAIN ANALYZE` a mano, o aplica recomendaciones plausibles pero sin validar.
+**Problema.** Cuando una query Postgres se vuelve lenta en producción y no hay DBA al lado, las opciones actuales fallan: ChatGPT alucina y viola compliance en sectores regulados; pganalyze ($149-$399/mes/servidor) excluye equipos pequeños; pgMustard es manual; EverSQL encierra al cliente en Aiven. El dev pierde horas con `EXPLAIN ANALYZE` o aplica recomendaciones sin validar.
 
-**Solución.** PgPilot analiza queries Postgres combinando un **motor determinístico** (Python puro, 19 detectores de anti-patterns con reglas auditables) que decide qué problema existe y qué índice o rewrite recomendar, con una **capa LLM** (Claude Sonnet) que solo explica pedagógicamente lo que el motor ya decidió. Toda recomendación se **valida en un sandbox Postgres efímero** antes de mostrarse al usuario — si el planner no usa el índice o el costo no baja, la sugerencia se descarta. Los literales del SQL se **sanitizan antes** de cualquier llamada al LLM. Modo offline disponible vía bundle JSON: el cliente nunca conecta su BD productiva a un SaaS externo.
+**Solución.** PgPilot combina un **motor determinístico** (Python, 19 detectores auditables) que decide qué problema existe y qué fix proponer, con una **capa LLM** (Claude Sonnet) que solo explica lo que el motor ya decidió. Toda recomendación se **valida en un sandbox Postgres efímero** antes de mostrarla. Los literales SQL se **sanitizan antes** de cualquier llamada al LLM. Modo offline disponible (bundle JSON, sin conectar BD productiva a SaaS externo).
 
-**Mercado.** TAM global de herramientas de optimización Postgres: **$800 M USD ARR** (recorte sobre el mercado DBMS global de $137 B reportado por Gartner 2025, aplicando 15-20% Postgres y 2-5% subcategoría performance/optimization). SAM LATAM (~495 K developers backend con Postgres, willingness-to-pay 20%): **$34 M USD ARR**. SOM medio a 4 años (2.5% del SAM): **$850 K USD ARR**.
+**Mercado.** TAM $800 M USD ARR (Postgres optimization, recorte sobre DBMS $137 B Gartner 2025). SAM LATAM ~495 K devs backend con Postgres × 20% WTP × $29/mes = **$34 M USD ARR**. SOM medio 4 años: **$850 K USD ARR** (2.5% SAM).
 
-**Modelo.** Per-seat (alineado a Cursor / GitHub Copilot, no per-server de pganalyze). Cuatro tiers: Free ($0), Pro ($29 USD/dev/mes), Team ($49/dev/mes mínimo 3 devs), Enterprise (desde $99/dev/mes con piso $5 K USD/año por organización). Margen bruto Pro estimado ≈ 97% al uso promedio hipotético de 30 análisis/mes.
+**Modelo.** Per-seat (Cursor / GitHub Copilot, no per-server). 4 tiers: Free $0 · Pro $29/dev · Team $49/dev (min 3) · Enterprise $99+/dev con piso $5K USD/año. Margen bruto Pro ≈ 97%.
 
-**Diferenciador.** Cuatro defensores arquitectónicos combinados que un competidor establecido no puede replicar en 90 días sin rehacer su producto: motor determinístico que decide + sanitización fuerte pre-LLM + validación en sandbox + modo offline. A esto se suma foco LATAM (idioma, horario, network) como defensa comercial transversal. La defensa real es la **integridad arquitectónica** del sistema completo, no una pieza individual.
+**Diferenciador.** **Integridad arquitectónica de 4 defensores combinados** que un competidor no replica en 90 días sin rehacer su producto: motor determinístico + sanitización fuerte + validación en sandbox + modo offline. Foco LATAM (idioma, horario, network) como defensa comercial transversal.
 
-**Equipo.** 5 estudiantes de Ingeniería en Sistemas Computacionales, Universidad Anáhuac Querétaro, con experiencia repartida en backend Python, frontend React, infra Docker y bases de datos. El producto se construyó durante un semestre con metodología disciplinada (motor determinístico revisado por humanos, capa de IA encapsulada con guardrails) — el mismo método que permite venderlo como producto controlado.
+**Equipo.** 5 estudiantes de Ingeniería en Sistemas Computacionales, Universidad Anáhuac Querétaro. Producto construido un semestre con metodología disciplinada (motor revisado por humanos, capa IA con guardrails) — el mismo método que permite venderlo como producto controlado.
 
-**Ask.** En contexto académico (Demo Day 14 de mayo 2026): validación del modelo de detección y de los guardrails frente a evaluadores y equipos rivales. En contexto comercial (post-Demo): introducciones a 5-10 CTOs/tech leads LATAM en fintech/healthtech/SaaS para los primeros pilotos gratuitos de 90 días, y mentoría en la motion founder-led-sales para LATAM.
+**Ask.** Académico (Demo Day 14-may-2026): validación del modelo y guardrails frente al jurado. Comercial post-Demo: introducciones a 5-10 CTOs/tech leads LATAM (fintech/healthtech/SaaS) para pilotos gratuitos de 90 días + mentoría founder-led-sales LATAM.
 
 ---
 
@@ -47,15 +47,9 @@
 
 ### 2.1 Descripción del problema
 
-Cuando un developer backend escribe una query nueva contra Postgres, no tiene cómo saber con certeza si será lenta en producción **hasta que producción la pruebe**. Los síntomas aparecen tarde: alertas de p95 latencia, queja de un cliente, un timeout en una corrida nocturna. Para entonces el dev abre `EXPLAIN ANALYZE`, intenta leer un árbol de nodos que mezcla Seq Scan, Nested Loop, Hash Join y costos estimados vs reales, y compara mentalmente contra los índices que recuerda haber creado meses atrás.
+Cuando un developer backend escribe una query nueva contra Postgres, no sabe con certeza si será lenta en producción **hasta que producción la pruebe**. Los síntomas aparecen tarde (p95, queja de cliente, timeout nocturno) y para entonces hay que leer `EXPLAIN ANALYZE` a mano. Si la empresa no tiene DBA dedicado — el caso de la mayoría de equipos LATAM medianos (5-50 devs) — el dev tiene 3 opciones, todas malas: **(1) ChatGPT** alucina índices y columnas + manda datos productivos a un tercero (viola LGPD / LFPDPPP / GDPR); **(2) pganalyze** a $149-$399/mes/servidor es prohibitivo en pesos LATAM; **(3) Resolverlo a mano** consume 2-8 horas-developer por incidente.
 
-Si la empresa no tiene DBA dedicado — que es el caso de la mayoría de equipos LATAM medianos (5-50 devs) — el dev hace una de tres cosas, todas malas:
-
-1. **Pegarle la query a ChatGPT.** Funciona a veces pero alucina índices que no existen, columnas que renombraron, sintaxis de versiones viejas. Más importante: **manda datos productivos a un tercero** sin auditoría, lo cual viola la regla básica de compliance en cualquier empresa con datos personales (LGPD en Brasil, LFPDPPP en México, GDPR si tiene operación europea).
-2. **Comprar pganalyze o equivalente.** $149-$399 USD/mes/servidor es prohibitivo para una startup LATAM con presupuesto en pesos. Una fintech mexicana mediana con 5 servidores Postgres pagaría $7.5 K USD/año mínimo — un costo que requiere aprobación de procurement y compite con hires.
-3. **Resolverlo a mano.** El dev senior dedica 2-8 horas por incidente leyendo el plan, probando hipótesis de índices, esperando que `ANALYZE` corra. El dev junior copia stack overflow y reza.
-
-El problema no es de capacidad técnica del dev. Es de **falta de herramienta intermedia**: algo más confiable que un LLM genérico, más barato que un SaaS enterprise, y que respete las restricciones de privacidad reales de los sectores regulados de LATAM.
+El problema no es de capacidad técnica del dev. Es **falta de herramienta intermedia**: algo más confiable que un LLM genérico, más barato que un SaaS enterprise, y que respete las restricciones de privacidad de los sectores regulados de LATAM.
 
 ### 2.2 User persona principal
 
@@ -88,21 +82,26 @@ El problema no es de capacidad técnica del dev. Es de **falta de herramienta in
 
 ### 2.3 Frecuencia y severidad
 
-**Datos primarios (entrevista F6 Carlos Orellán + persona F10 Andrés Villanueva + F9 análisis):**
+**Gradiente de dolor cuantificado (F6 Carlos + F7 Jos + F8 Raúl + F10 Andrés):**
 
-- **Frecuencia de optimización reactiva (Carlos, DBA, BDs ~30 GB c/u):** 30 min a 1 hora al mes. Actúan por eventos, no proactivamente. Validación parcial: equipos chicos con menor volumen tienen menos incidentes detectados pero también menos visibilidad de los problemas latentes.
-- **Frecuencia de incidentes mayores (Andrés, Tech Lead, BD principal ~180 GB):** 1.5-3 horas-developer por incidente, ≥1 incidente cada 2 semanas. En cierres de quincena (carga × 10) los incidentes se multiplican. El ciclo manual completo de un mes promedio ≈ 4-8 horas-developer.
-- **Anti-pattern real reportado (Carlos, F6 pregunta 5):** `SELECT *` sobre tablas con BLOBs causó queries lentas detectadas en pruebas; resolución manual columna por columna. Ese anti-pattern es exactamente D9 (`select_star`) del catálogo PgPilot — validación directa del valor del producto.
+| Perfil | BD | Tiempo/mes |
+|---|---|---|
+| Carlos — DBA con equipo | 3 × ~30 GB (migración) | 0.5-1 h |
+| Jos — ingeniero fullstack sin DBA | 2 × 500 MB-1 GB | ~10 h |
+| Andrés — persona, tech lead fintech | 3 × ~180 GB | 4-8 h |
+| Raúl — tech lead fintech sin DBA | 3 × ~120 GB principal | 15-20 h |
 
-**Severidad:**
+**Conclusión clave:** el dolor escala con la **ausencia de DBA dedicado**, no con el tamaño absoluto. Jos (1 GB) dedica 10× más tiempo que Carlos (30 GB con equipo). Cuando un tech lead absorbe el rol, se vuelve "medio DBA" sin que el rol exista formalmente — Raúl lo dijo literal: *"siento que la mitad de mi tiempo es de base de datos cuando debería estar haciendo otras cosas de tech lead"*.
 
-- **Por incidente menor (query lenta detectada en staging o early prod):** 2-8 horas-developer para diagnosticar + corregir + revisar PR. A salario LATAM senior ($25-50 USD/h, Glassdoor / Levels.fyi ajustado LATAM, citado en F9), eso es $50-400 USD por incidente. Con 1-2 incidentes/mes ≈ **$50-800 USD/mes en horas perdidas** según tamaño de BD y equipo.
-- **Por incidente mayor (afecta clientes o métricas de negocio):** además de las horas técnicas, hay costo de oportunidad (transacciones fallidas, churn, contacto cliente). Gartner cost-of-downtime benchmarks (citados en F9 §5) sitúan un incidente de producción por query lenta entre **$500 y $5,000 USD** dependiendo del volumen transaccional. Para Andrés (cierre de quincena con × 10 de carga) el extremo alto del rango es realista.
-- **Costo invisible:** Andrés improvisa el rol de DBA sin que sea su responsabilidad formal. La feature siguiente se atrasa una semana cada vez que hay un incidente. El CTO percibe el problema como "rendimiento" pero no ve que viene de la ausencia de proceso, no de un dev mediocre.
+**Anti-patterns reportados — 3 de 3 mapean a detectores activos de PgPilot:**
 
-**ROI estimado (F9 §5):** equipo de 5 devs en tier Pro = $145 USD/mes. Si PgPilot ahorra 2 horas/mes de diagnóstico ($50-100 USD) **+** previene 1 incidente/trimestre ($500+ USD), el ROI es positivo desde el primer trimestre.
+- **Carlos (F6):** `SELECT *` sobre tablas con BLOBs → **D9** (`select_star`).
+- **Jos (F7):** JOINs sin índices generando producto cartesiano → **D16** (`seq_scan_missing_index`). Fix manual tomó **1 semana** completa.
+- **Raúl (F8):** `NOT IN` sobre 2M registros bloqueó transacciones de pago en fintech → **D19** (`not_in_nullable_subquery`). Fix con `NOT EXISTS` + índice parcial: **45 min → 3 seg**. Costo del incidente: 4 h madrugada + 2 h postmortem.
 
-> Pendiente: F7 y F8 (entrevistas 2 y 3) ampliarán estos rangos con perfiles de equipos más grandes y/o sectores adyacentes. F15 se actualizará cuando aterricen.
+**Severidad y costo mensual:** **$25-1,000 USD/equipo/mes** en tiempo directo (Raúl: 15-20 h × $25-50/h = $500-1,000/mes; Carlos: $25-50/mes; Jos: $250-500/mes). Por incidente mayor con impacto a clientes: **$500-5,000 USD adicionales** (Gartner cost-of-downtime; el caso de Raúl con transacciones de pago bloqueadas cae en la cota alta).
+
+**ROI a $29/dev/mes (Pro):** equipo de 5 devs = $145/mes; ahorra ≥2 h/mes diagnóstico + previene ≥1 incidente/trimestre → **ROI positivo desde el mes 1**. **Caso Raúl:** $200/mes vs $750-1,000/mes ahorradas = **ROI 3-5×** inmediato. Cita literal: *"200 dólares contra lo que me pagan por esas horas es nada, yo la compraría sin pensarlo"*.
 
 ---
 
@@ -112,95 +111,71 @@ El problema no es de capacidad técnica del dev. Es de **falta de herramienta in
 
 ### 3.1 Resumen de entrevistas
 
-F6 completada (1 de 3); F7 y F8 en agendamiento al cierre de este documento. Lista completa de candidatos y criterios de selección en `business/lista-entrevistados.md` (F4); transcripción y respuestas detalladas en `business/entrevista-1.md`.
+3 de 3 entrevistas completadas (F6, F7, F8). Lista completa de candidatos y criterios de selección en `business/lista-entrevistados.md` (F4); transcripciones y respuestas detalladas en `business/entrevista-1.md`, `entrevista-2.md`, `entrevista-3.md`.
 
 | Nombre / Rol del entrevistado | Empresa / Sector | Fecha | Duración |
 |---|---|---|---|
 | Carlos Orellán — DBA | Software house LATAM (3 BDs Postgres, migración a ~30 GB c/u) | 13 de mayo de 2026 | ~10 min (videollamada grabada) |
-| [PENDIENTE: F7] — perfil objetivo: Tech lead / Backend senior con Postgres ≥100 GB | [PENDIENTE: en agendamiento] | [PENDIENTE] | 25-30 min |
-| [PENDIENTE: F8] — perfil objetivo: CTO o Engineering Manager LATAM | [PENDIENTE: en agendamiento] | [PENDIENTE] | 25-30 min |
+| Jos Lugo — Ingeniero de software (fullstack) | Equipo de desarrollo LATAM (2 BDs Postgres, 500 MB-1 GB c/u, ~20 tablas) | 13 de mayo de 2026 | ~10 min (videollamada grabada) |
+| Raúl de la Breña — Tech Lead Backend | Fintech LATAM (3 BDs Postgres, principal ~120 GB con 45 tablas, sin DBA dedicado) | 13 de mayo de 2026 | ~12 min (videollamada grabada) |
 
 ### 3.2 Preguntas hechas
 
-Las 9 preguntas del guion (F5, ver `business/guion-entrevistas.md` para texto completo y objetivo de cada una):
-
-1. **Contexto.** ¿Cuántas bases de datos Postgres manejas en producción y cuál es el tamaño aproximado de la más grande?
-2. **Comportamiento actual.** Cuando te llega una queja de "la app está lenta", ¿cuáles son los primeros 3 pasos que das para diagnosticar si es un problema de queries?
-3. **Stack actual.** ¿Qué herramientas usas hoy para analizar queries lentas? (`pg_stat_statements`, `EXPLAIN ANALYZE` manual, pgBadger, algún SaaS tipo Datadog/pganalyze...)
-4. **Dolor cuantificado.** ¿Cuánto tiempo al mes estimas que le dedicas a optimizar queries o investigar problemas de rendimiento en Postgres?
-5. **Historia concreta.** ¿Puedes contarme un caso reciente donde una query lenta causó un problema real en producción? ¿Cómo lo resolviste y cuánto tardaste?
-6. **Encaje en workflow.** Si existiera una herramienta que analiza automáticamente tus queries y te da el SQL corregido listo para copiar, ¿en qué parte de tu flujo de trabajo la usarías?
-7. **Objeciones de seguridad.** ¿Qué te preocuparía de darle acceso a una herramienta así a tu base de datos de producción? ¿Qué garantías necesitarías?
-8. **Oportunidad de integración.** ¿Tu equipo tiene algún proceso formal de code review para queries o migraciones antes de que lleguen a producción?
-9. **Decisor y precio.** Si esta herramienta costara entre $50 y $200 USD/mes por base de datos, ¿quién en tu empresa tomaría la decisión de compra?
-
-El guion enfatiza **comportamiento pasado**, no intenciones futuras ("no preguntar ¿usarías nuestro producto?" — la gente miente para no decepcionar).
+9 preguntas (guion F5, texto completo en `business/guion-entrevistas.md`) que cubren: contexto del entrevistado, flujo manual de diagnóstico, herramientas usadas, tiempo invertido/mes, caso real reciente, encaje en workflow, objeciones de seguridad, proceso de code review, decisor y precio. El guion enfatiza **comportamiento pasado**, no intenciones futuras — la gente miente para no decepcionar.
 
 ### 3.3 Aprendizajes principales
 
-7 insights concretos de la entrevista con Carlos Orellán (F6) cruzados contra el persona F10 (Andrés Villanueva). Marcamos cuáles **validan** hipótesis previas, cuáles las **falsan**, y cuáles **abren oportunidad nueva** para producto, pricing o GTM:
+9 insights consolidados de las 3 entrevistas (F6 Carlos + F7 Jos + F8 Raúl) cruzados con el persona F10 (Andrés):
 
-1. **El dolor existe pero es reactivo, no proactivo.** ✅ Validado. Carlos: "actuamos por eventos, cuando alguien reporta algo." Andrés vive lo mismo a mayor escala. Implicación para producto: PgPilot no compite con el flujo "no hay problema, no actuamos" — compite por el ciclo reactivo cuando ya hay un incidente. Punto de inserción ideal: el momento en que llega la alerta.
+1. **Dolor reactivo, no proactivo. ✅ 3/3.** Carlos: "actuamos por eventos"; Jos: 1 semana de fix manual; Raúl: 15-20 h/mes pese a Grafana + Datadog (observabilidad ≠ optimización). **Implicación:** insertarnos en el momento de la alerta, no antes.
 
-2. **SELECT * es un anti-pattern real que ya les ha dolido.** ✅ Validado. Carlos resolvió un caso en producción reemplazando `SELECT *` por columnas específicas. Ese anti-pattern es exactamente el detector D9 (`select_star`) del catálogo PgPilot — el producto detecta hoy un dolor real reportado. Implicación: usar ese caso como demo concreta en el pitch.
+2. **Anti-patterns reales → 3/3 mapean a detectores. ✅ Validado.** D9 (Carlos), D16 (Jos), D19 (Raúl). **Implicación:** los 3 casos son demos del pitch; el de Raúl es el más fuerte (45 min → 3 seg + incidente fintech con pagos bloqueados).
 
-3. **CI/CD y el linter de SQL son el punto de entrada ideal.** ✅ Validado. Carlos mencionó **dos veces** la integración como linter en el pull request y como parte del CI con Liquibase. Esto **valida la hipótesis 5** previa (code review pre-merge > análisis reactivo) y **abre oportunidad nueva de producto**: GitHub Action / GitLab CI integration en roadmap Q2 2026-2027.
+3. **CI/desarrollo como punto de entrada con matiz. ✅ 3/3.** Carlos: PR/CI con Liquibase; Jos: dev/staging; Raúl: dual (CI + monitor proactivo). **Implicación:** PgPilot necesita múltiples superficies (editor + GitHub Action + monitor de workload).
 
-4. **Read-only es innegociable.** ✅ Validado fuertemente. La preocupación #1 de Carlos es que la herramienta tenga privilegios de escritura. PgPilot ya cumple esto por diseño (R7 read-only forzado en `conector`). Implicación para messaging: poner "read-only por diseño" como bullet #1 en la landing, no como tercer beneficio. Andrés (F10 §"Criterios de compra") confirma el mismo bloqueador.
+4. **Privacidad y read-only son bloqueador legal. ✅ 3/3 con escalada por sector.** Carlos: read-only; Jos: no logs, control por tabla; Raúl: self-hosted on-premise para fintech. **Implicación:** modo offline + tier Enterprise self-hosted abren el sector regulado LATAM.
 
-5. **El decisor de compra es el CTO, no el dev.** ✅ Validado. Carlos: "normalmente es el CTO". Implicación crítica para GTM: el outreach mes 2-3 del plan F13 debe priorizar **CTOs y tech leads**, no developers individuales. El tier Pro es el caballo de Troya (un dev lo paga de su bolsillo, demuestra valor internamente), pero el verdadero ARR escala vía Team/Enterprise con el CTO como comprador.
+5. **Decisor heterogéneo — "es el CTO" matizada. ⚠️ Parcial.** Carlos: CTO; Jos: dual técnico + gerencial; Raúl: él mismo aprueba hasta $500/mes (*"yo la compraría sin pensarlo"*). **Implicación:** Pro/Team con sales bottom-up a tech leads; Enterprise top-down al CTO.
 
-6. **No usan herramientas especializadas de Postgres.** ✅ Validado. Carlos usa Rapid7 + CloudWatch + EXPLAIN manual. Andrés usa Datadog + psql + ChatGPT. **Ninguno usa pganalyze, EverSQL ni DBtune.** Implicación: PgPilot **no compite con pganalyze en el mercado LATAM** — los devs LATAM aún no son clientes de pganalyze. Compite con "no hacer nada" o con "hacerlo a mano" — un baseline más fácil de superar.
+6. **No usan herramientas especializadas. ✅ 3/3.** Ninguno usa pganalyze / EverSQL / DBtune. Raúl tiene Grafana + Datadog pero las queries siguen manuales. **Implicación:** PgPilot compite con "hacerlo a mano" en LATAM, no con pganalyze.
 
-7. **Privacidad de datos productivos es bloqueador legal, no preocupación técnica.** ✅ Validado (especialmente en Andrés F10): "Sé que hay herramientas buenas pero no puedo darles acceso a producción. Legalmente no puedo." En fintech B2B con datos de nómina (RFC, CURP, salarios), el área legal bloquea cualquier herramienta sin sanitización fuerte o modo offline. Implicación: el modo offline (bundle JSON) no es un nice-to-have, es **el feature que abre la puerta del sector regulado LATAM**.
+7. **WTP $29 Pro / $200 BD validado en el sector con más dolor. ✅ 1/3 explícito + 2/3 sin objeción.** Raúl validó *"sin pensarlo"*. **Implicación:** mantener Pro $29 y Team $49; plan B "$19" queda como contingencia.
 
-**Hipótesis pendientes (a validar en F7 y F8):**
+8. **Dolor escala con ausencia de DBA, no con tamaño puro de BD. ⚠️ Hipótesis matizada.** Jos (1 GB sin DBA) = 10 h/mes > Carlos (30 GB con equipo) = 1 h/mes. **Implicación:** ICP correcto es "5-20 devs sin DBA", no "≥100 GB".
 
-- 🟡 **Willingness-to-pay específico $29 USD/dev/mes en LATAM.** Carlos no expresó objeción al rango $50-200/BD pero no se le preguntó por precio per-dev exacto. F7/F8 deben preguntar específicamente por el rango Pro y por el dis-/in-comformidad a $29.
-- 🟡 **Hipótesis "el dolor crece con el tamaño de la BD".** Carlos está en migración (pocos MB → 30 GB), Andrés ya está a 180 GB. F7/F8 idealmente cubren un perfil de equipo en escala mayor (≥500 GB) para confirmar la curva.
-- 🟡 **¿Los equipos adoptarían PgPilot sin LLM (modo offline)?** No se preguntó a Carlos directamente. F7 debe incluir esta pregunta para validar la utilidad del modo plantillas (R5).
+9. **Monitor proactivo de degradación como 2º caso de uso. 🟢 Oportunidad nueva (Raúl).** *"Que revise queries existentes y avise cuáles se pueden optimizar"*. **Implicación:** feature Q3/Q4 sobre `pg_stat_statements` con tracking histórico + alertas.
 
-**Cambios al producto/pricing/GTM derivados de F6 + F10 (decisiones provisionales, sujetas a F7/F8):**
+**Hipótesis resueltas / abiertas:** WTP $29 ✅ (Raúl); "dolor crece con tamaño" ⚠️ matizada (DBA-ausencia es el predictor real); modo offline sin LLM 🟡 parcial (Raúl pide self-hosted; R5 explícito no preguntado — confirmar en pilotos).
 
-- **Producto:** priorizar GitHub Action / GitLab CI integration en Q2 (insight #3).
-- **Pricing:** mantener tier Pro $29 hasta tener señal contraria en F7/F8 (sin objeción explícita en F6).
-- **GTM:** redirigir outreach mes 2-3 del plan F13 a CTOs/tech leads en vez de developers individuales (insight #5). El tier Pro se distribuye bottom-up; el tier Team/Enterprise se vende top-down al CTO.
-- **Messaging:** elevar "read-only por diseño" y "modo offline para sectores regulados" a los bullets #1 y #2 de la landing (insights #4 y #7).
+**Cambios al producto / pricing / GTM derivados de F6 + F7 + F8:**
+
+- **Producto:** GitHub Action CI en Q2; self-hosted Docker Enterprise en Q3; monitor de degradación en Q3/Q4.
+- **Pricing:** mantener Pro $29 y Team $49; plan B "$19" como contingencia.
+- **GTM:** Pro/Team bottom-up a tech leads (autonomía hasta ~$500/mes); Enterprise top-down a CTO + finanzas.
+- **Messaging:** #1 "Read-only + sanitización fuerte"; #2 "Self-hosted para fintech"; #3 "Detecta los anti-patterns que ya te dolieron — D9/D16/D19 con casos reales".
 
 ---
 
 ## 4. Solución
 
-PgPilot se ve así desde el lado del usuario:
+El developer abre el editor web de PgPilot (tema oscuro tipo VS Code, en español), pega una query problemática y pulsa "Analizar". En 2-4 segundos aparecen tarjetas con detecciones, ejemplo:
 
-El developer abre el editor web de PgPilot (interfaz tipo VS Code, tema oscuro, en español). Pega una query SQL que cree problemática — por ejemplo, una que aparece en su `pg_stat_statements` con tiempo total alto. Pulsa "Analizar". En 2-4 segundos aparecen tarjetas con detecciones:
+> *"Detectamos un Seq Scan sobre `posts` (12.3 M filas) con filtro `WHERE author_id = $1`. Recomendamos `CREATE INDEX idx_posts_author_id ON posts(author_id);`. Validado en sandbox: costo 45,231 → 287 (158× mejora). Confianza: alta."*
 
-> *"Detectamos un Seq Scan sobre la tabla `posts` (12.3 M filas) con filtro `WHERE author_id = $1`. La tabla no tiene índice en `author_id`, lo que fuerza al planner a leer toda la tabla. Recomendamos `CREATE INDEX idx_posts_author_id ON posts(author_id);`. Validado en sandbox: costo estimado baja de 45,231 a 287 (158× mejora). Confianza: alta."*
-
-Debajo, un comparativo before/after del plan de EXPLAIN con costos resaltados. El dev puede copiar el SQL con un clic, llevarlo a su PR, mergear con tranquilidad. Si el LLM está habilitado (tier Pro+), una explicación adicional en prosa pedagógica describe **por qué** el motor identificó este patrón y **qué riesgo** evita el índice. Cuatro indicadores verdes muestran las validaciones que pasó la recomendación: schema OK, no duplica índice existente, sintaxis válida, sandbox confirma mejora.
-
-A las 24 horas el dev ha procesado 5-10 queries de su workload y ha aplicado 2-3 índices recomendados. Su p95 baja. Su PR fue aprobado más rápido porque incluyó el plan before/after. El tech lead del equipo lo nota y agrega la URL del editor a su onboarding interno.
+Debajo, comparativo before/after del plan EXPLAIN con 4 indicadores de validación verdes (schema OK, no duplica índice, sintaxis válida, sandbox confirma mejora). El dev copia el SQL, lo lleva a su PR, mergea con tranquilidad. Si el LLM está habilitado (Pro+), una explicación pedagógica describe **por qué** y **qué riesgo** evita el índice.
 
 ### 4.1 Funcionalidades core
 
 | Feature | Beneficio para el usuario |
 |---|---|
-| **Editor web con análisis on-demand** | Pega query, recibe detecciones en segundos sin instalar nada local. Onboarding cero fricción. |
-| **19 detectores de anti-patterns documentados** | Cobertura amplia y conocida del catálogo público (`/docs/patterns/`). El dev entiende qué se busca, no es una caja negra. |
-| **Recomendación de índice con `CREATE INDEX` listo para copiar** | Productividad inmediata: del análisis al PR en minutos, no horas. |
-| **Validación en sandbox antes de mostrar** | Confianza en la recomendación: no es una sugerencia plausible, es una sugerencia con costo before/after verificado. |
-| **Comparativo before/after del plan EXPLAIN** | Evidencia en el PR para que el reviewer apruebe rápido y para defender la decisión en code review. |
+| **19 detectores documentados + catálogo público (`/docs/patterns/`)** | El dev entiende qué se busca, no es una caja negra. SEO orgánico. |
+| **`CREATE INDEX` listo para copiar al PR** | Del análisis al PR en minutos, no horas. |
+| **Validación en sandbox efímero antes de mostrar + comparativo before/after** | Recomendación con costo verificado, no sugerencia plausible. Evidencia en el PR. |
 | **Workload analysis sobre `pg_stat_statements`** | Top 10 queries por impacto (tiempo total, no frecuencia) — ataca primero lo que más duele. |
-| **Sanitización fuerte de literales pre-LLM** | Compliance: ningún dato productivo sale del perímetro hacia el LLM. Auditable. |
+| **Sanitización fuerte de literales pre-LLM + modo "LLM apagado" con plantillas** | Compliance auditable + resiliencia si Anthropic se cae. |
 | **Modo offline / bundle JSON** | Para fintech/healthtech LATAM: análisis sin conectar la BD productiva a ningún SaaS. |
-| **Modo "LLM apagado" con plantillas** | Resiliencia: el producto funciona aunque Anthropic se caiga. Las explicaciones son más secas pero válidas. |
-| **Catálogo abierto en `/docs/patterns/`** | Transparencia y SEO: cada anti-pattern es un artículo público que demuestra rigor técnico. |
 
-**Estado al cierre del semestre (validación funcional sobre la BD demo del curso, AppDB v1):**
-
-- 18 de 20 queries plantadas detectadas correctamente (objetivo rúbrica ≥16, superado).
-- 0 falsos positivos sobre 10 queries sanas (objetivo rúbrica <3, superado).
-- Modo "LLM apagado" funcional (resiliencia validada).
+**Estado al cierre del semestre (AppDB v1):** 18/20 queries detectadas (≥16 objetivo), 0/10 falsos positivos (<3 objetivo), modo "LLM apagado" funcional.
 
 ---
 
@@ -213,54 +188,29 @@ A las 24 horas el dev ha procesado 5-10 queries de su workload y ha aplicado 2-3
 | Característica | pganalyze | EverSQL (Aiven) | DBtune | pgMustard | **PgPilot** |
 |---|---|---|---|---|---|
 | **Foco principal** | Monitoring continuo + advisors | Rewrite automático IA | Tuning de parámetros (ML) | Visualizador de EXPLAIN | Detección + recomendaciones validadas |
-| **BD soportadas** | Postgres | Postgres, MySQL | Postgres | Postgres | Postgres |
 | **Precio entrada (USD/mes)** | $149/servidor | Gratis (vía Aiven) | Trial 3 DB; comercial no público | ~$8/usuario (95 €/año) | **$29/dev (Pro)** |
 | **Modelo de deployment** | SaaS + on-premise (Enterprise) | SaaS (Aiven) | SaaS + agente en BD | SaaS (paste manual) | **Self-hosted Docker + SaaS** |
 | **Mecanismo de detección** | Heurísticas + ML propietario | Modelo IA opaco | ML sobre métricas runtime | Reglas sobre el plan | **Motor determinístico + LLM solo para explicar** |
 | **Validación de recomendación** | "What If?" en producción | No documentada | A/B real en producción | Ninguna (solo sugiere) | **Sandbox efímero antes de mostrar** |
 | **Sanitización de datos pre-IA** | Filtros PII (tier alto) | No documentada | Solo métricas | Planes no almacenados | **Sanitización fuerte obligatoria** |
 | **Modo offline** | Solo Enterprise on-prem | No | No (requiere agente) | Parcial (paste manual) | **Sí (bundle JSON)** |
-| **Idioma UI / docs** | Inglés | Inglés | Inglés | Inglés | **Español + Inglés (foco LATAM)** |
-| **Workload analysis** | Sí (agent continuo) | Sí (sensor pasivo) | Sí (métricas) | No | **Sí (`pg_stat_statements`)** |
-| **Catálogo de patterns público** | Parcial | No | No (no aplica) | Tips heurísticos | **15+ patterns documentados** |
 
 ### 5.2 Análisis honesto
 
-Honestidad obligada por la rúbrica: PgPilot **no** es mejor que la competencia en todas las dimensiones. Por cada competidor:
+PgPilot **no** es mejor en todo:
 
-**vs pganalyze**
-
-- Mejor que nosotros en: telemetría histórica (retención hasta 100 días), integraciones maduras con cloud providers, "What If?" con cientos de combinaciones, compliance enterprise comprobada en producción.
-- Nosotros mejores en: precio accesible para equipos pequeños, motor auditable (no ML opaco), sanitización por diseño, modo offline disponible en todos los tiers Enterprise, idioma y horario LATAM.
-
-**vs EverSQL (Aiven)**
-
-- Mejor que nosotros en: gratuito dentro del ecosistema Aiven (imbatible en precio para ese caso), soporta también MySQL, base instalada amplia (+100K ingenieros, clientes como Amazon, Salesforce).
-- Nosotros mejores en: no requiere lock-in a Aiven, motor determinístico vs IA opaca, validación con sandbox explícita, catálogo público de detectores (transparencia vs caja negra).
-
-**vs DBtune**
-
-- Mejor que nosotros en: tuning autónomo de parámetros (`shared_buffers`, `work_mem`, etc.), casos de estudio con 50-1000% mejora medida, integración profunda con RDS/Aurora.
-- Nosotros mejores en: **no competimos en su área** — DBtune tunea parámetros, PgPilot tunea queries e índices. Mensaje complementario: "usa DBtune para tunear tu instancia, PgPilot para tunear tus queries."
-
-**vs pgMustard**
-
-- Mejor que nosotros en: precio (~$8/mes vs $29 nuestro Pro), simplicidad extrema (paste-and-go sin instalación), interfaz pulida.
-- Nosotros mejores en: workload analysis (no solo 1 plan a la vez), sandbox de validación, recomendaciones de índice con `CREATE INDEX` listo, modo offline, idioma español, catálogo abierto.
+- **vs pganalyze** — ellos: telemetría histórica 100 días, integraciones cloud maduras, "What If?" en producción, compliance enterprise. Nosotros: precio accesible, motor auditable (no ML opaco), sanitización por diseño, idioma y horario LATAM.
+- **vs EverSQL (Aiven)** — ellos: gratis dentro de Aiven, soporta MySQL, +100K ingenieros instalados. Nosotros: sin lock-in, motor determinístico vs IA opaca, validación con sandbox, catálogo público.
+- **vs DBtune** — ellos: tuning autónomo de parámetros con 50-1000% mejora medida. **No competimos** — DBtune tunea parámetros, PgPilot tunea queries; mensaje complementario.
+- **vs pgMustard** — ellos: ~$8/mes vs $29 Pro, paste-and-go pulido. Nosotros: workload analysis, sandbox de validación, `CREATE INDEX` listo, modo offline, español.
 
 ### 5.3 Espacio en blanco
 
-**Nuestro nicho:** developers backend LATAM con Postgres en producción en empresas medianas (5-50 devs), en sectores con restricciones de privacidad reales (fintech, healthtech, govtech), que no pueden pagar pganalyze ni pueden mandar SQL con datos a ChatGPT.
+**Nuestro nicho:** developers backend LATAM con Postgres en producción en empresas medianas (5-50 devs) en sectores regulados (fintech, healthtech, govtech), que no pueden pagar pganalyze ni mandar SQL con datos a ChatGPT.
 
-**Los competidores no atienden bien este nicho porque:**
+**Por qué los competidores no atienden bien este nicho:** pganalyze tiene economía de unidad enterprise que erosionaría bajando a $30/dev; EverSQL depende del ecosistema Aiven (lock-in); DBtune ataca un eje ortogonal; pgMustard es paste-and-go individual sin workload ni compliance. **Ninguno tiene contenido, soporte ni network LATAM.**
 
-- **pganalyze** se diseñó para el segmento Production/Scale/Enterprise con presupuesto USD enterprise. Bajar a $30/dev/mes erosionaría su economía de unidad y canibalizaría su tier alto.
-- **EverSQL** depende del ecosistema Aiven. Si el cliente no quiere lock-in o usa Postgres autoadministrado (común en LATAM), EverSQL no aplica.
-- **DBtune** ataca un eje ortogonal — no compite directamente.
-- **pgMustard** se especializa en paste-and-go individual, no en flujo de equipo con workload analysis ni compliance.
-- **Ninguno tiene contenido, soporte ni network LATAM.** Lo que para un competidor en San Francisco es "expansión opcional al año 3", para nosotros es el mercado primario desde el día 1.
-
-**Nosotros podemos servirlo bien porque:** el equipo fundador está en LATAM, entiende el ciclo de procurement local, los stacks dominantes (Node + Postgres en fintech mexicana, Spring + Postgres en bancos brasileños), las restricciones cambiarias de cobrar en USD, y tiene acceso a las comunidades de devs regionales (PostgreSQL MX, Devs México, FrontendCafé). Eso no se replica con un Country Manager LATAM contratado desde fuera.
+**Por qué nosotros sí:** equipo fundador LATAM con ciclo de procurement local, stacks dominantes (Node+Postgres fintech mexicana, Spring+Postgres bancos brasileños), restricciones cambiarias USD, y acceso a comunidades regionales (PostgreSQL MX, Devs México, FrontendCafé) — no se replica con un Country Manager contratado desde fuera.
 
 ---
 
@@ -295,7 +245,7 @@ Honestidad obligada por la rúbrica: PgPilot **no** es mejor que la competencia 
 - **$99+ Enterprise** captura el costo de compliance + soporte dedicado. El piso anual de $5 K/año asegura economía de unidad en cuentas pequeñas con datos sensibles (fintech LATAM).
 - **Margen bruto Pro estimado ≈ 97%** asumiendo 30 análisis/mes/dev (costo variable ~$0.78 por mes — Claude API + sandbox + infra prorrateada). Hay holgura amplia para usuarios power.
 
-**Validación pendiente.** Los precios no se han probado con paying customers. F6-F8 deben confirmar el rango aceptado por el ICP. Si la respuesta moda es "no, $15", se reajusta Pro a $19 manteniendo Team y Enterprise. Plan B documentado en `pricing.md` §6.
+**Validación pendiente / hecha.** Los precios no se han probado con paying customers (la prueba real es post-Demo Day). De las 3 entrevistas: Raúl (F8, tech lead fintech) validó explícitamente el rango — *"200 dólares contra lo que me pagan por esas horas es nada, yo la compraría sin pensarlo"* — y declaró autonomía de compra hasta $500/mes sin necesidad de CTO. Carlos (F6) y Jos (F7) no expresaron objeción al rango $50-200/BD aunque no se les preguntó precio per-dev exacto. **Conclusión:** se mantiene Pro $29 y Team $49. El plan B "$19" documentado en `pricing.md` §6 queda como contingencia para casos donde el dev no tenga autonomía de compra y dependa 100% del CTO con presupuesto en pesos.
 
 ---
 
@@ -344,11 +294,11 @@ Honestidad obligada por la rúbrica: PgPilot **no** es mejor que la competencia 
 
 ### 7.4 Tendencias relevantes
 
-Por qué este mercado es atractivo **AHORA**:
+Por qué el mercado es atractivo **AHORA**:
 
-- **Tendencia 1 — Postgres ganando share aceleradamente.** PostgreSQL adopción 55.6% entre developers en 2025 (Stack Overflow Survey 2025, citado por Percona y Yugabyte), creciendo desde 45% en 2022. Serverless Postgres market crece a CAGR 27.8% (Research and Markets 2026). Cada año hay más Postgres en producción y por lo tanto más superficie para optimizar.
-- **Tendencia 2 — Presión de costos cloud.** AWS RDS, Aurora y equivalentes incrementaron precio en 2024-2025. Las empresas LATAM con presupuesto en pesos sufren por tipo de cambio. Optimizar queries para reducir CPU/IOPS pasa de "nice to have" a "necesario para defender el margen".
-- **Tendencia 3 — Regulación de datos endureciéndose en LATAM.** LGPD en Brasil (vigente desde 2020 con multas crecientes), LFPDPPP en México con propuesta de actualización 2026, equivalentes en Colombia y Argentina. La regla "no mandes data sensible a un LLM externo sin sanitización" pasa de buena práctica a obligación legal. Herramientas que sanitizan por diseño tienen ventaja estructural.
+- **Postgres ganando share aceleradamente** — 55.6% adopción developer 2025 (Stack Overflow), desde 45% en 2022. Serverless Postgres CAGR 27.8%.
+- **Presión de costos cloud** — AWS RDS / Aurora subieron precio 2024-2025; empresas LATAM con presupuesto en pesos optimizan para defender margen.
+- **Regulación de datos endureciéndose** — LGPD Brasil, LFPDPPP México (actualización 2026), Colombia, Argentina. Sanitizar por diseño pasa de buena práctica a obligación legal.
 
 ---
 
@@ -377,14 +327,7 @@ Por qué este mercado es atractivo **AHORA**:
 
 ### 8.2 Estrategia de growth (después de los 10)
 
-Una vez con 10 clientes y ~$80 K ARR (cierre mes 12, ~mayo 2027):
-
-- **Canal 1 — Inbound dominante:** el catálogo de patterns acumula tráfico orgánico, los casos de estudio empiezan a citarse, y los primeros clientes refieren a colegas (referral rewards documentados).
-- **Canal 2 — Primer hire AE LATAM:** Account Executive con quota $200 K ARR año, salario base $25-30 K USD + comisión, comenzando mes 13. Su rol: ejecutar outbound a las cuentas que aparecen en el funnel inbound pero no convierten solas.
-- **Canal 3 — Partner program:** consultoras LATAM (estilo Stormatics) revenden PgPilot con margen 25% a sus clientes Postgres. Ataca el segmento que prefiere comprar a través de un proveedor local conocido.
-- **Canal 4 — Expansión geográfica selectiva:** España (mismo idioma, ICP similar tech lead fintech). NO US todavía (compite frontalmente con pganalyze, mejor esperar al año 3).
-
-**Meta año 2:** 50 clientes, $350 K ARR. Eso alimenta el plan year-by-year esbozado en `mercado.md` §4 que llega a SOM medio de $850 K ARR en año 4.
+Con 10 clientes y ~$80 K ARR (cierre mes 12): **(1)** inbound dominante (catálogo SEO + casos de estudio + referidos); **(2)** primer hire AE LATAM mes 13 con quota $200 K ARR, salario $25-30 K + comisión; **(3)** partner program con consultoras LATAM (margen 25%); **(4)** expansión a España (mismo idioma, NO US todavía — competiría con pganalyze). **Meta año 2:** 50 clientes, $350 K ARR → SOM medio $850 K en año 4.
 
 ---
 
@@ -434,52 +377,30 @@ Equipo de 5 estudiantes de Ingeniería en Sistemas Computacionales, Universidad 
 | Workload + tests | [PENDIENTE] | `/workload`, parser `pg_stat_statements`, suite de coverage |
 | Documentación + negocio | [PENDIENTE] | `/docs`, `/business`, plantillas de entrega |
 
-**Por qué este equipo es el adecuado para resolver este problema:**
-
-1. **Conocemos el mercado.** Somos developers LATAM en formación, con prácticas o trabajo en empresas mexicanas que ya usan Postgres. El user persona del documento no es abstracto — es una versión adulta de nosotros mismos.
-2. **Disciplina arquitectónica demostrada.** La regla #1 del proyecto ("motor decide, LLM explica, sandbox valida") no es una slide de pitch — está codificada en `RULES.md`, vigilada en code reviews, y verificada en tests automatizados (B11 de privacidad, validación cruzada del LLM, sandbox cleanup). El mismo método que permite construir un producto confiable es el método que aplicamos.
-3. **Honestidad declarada.** Este documento marca explícitamente qué insumos están pendientes (entrevistas) y qué hipótesis quedan por validar (rangos de precio, willingness-to-pay LATAM, foco geográfico vs expansión). No vendemos certezas que no tenemos.
-4. **Bitácora versionada.** Cada decisión técnica, cada cambio de scope, cada bloqueo está en `PROGRESS.md` — 3,000+ líneas de log al cierre del semestre. Eso es trazabilidad que ningún equipo improvisa el último mes.
+**Por qué este equipo es el adecuado:** (1) **conocemos el mercado** — developers LATAM en formación; el persona Andrés es una versión adulta de nosotros; (2) **disciplina arquitectónica demostrada** — la regla R1 ("motor decide, LLM explica, sandbox valida") está codificada en `RULES.md` y verificada en tests automatizados, no es slide de pitch; (3) **honestidad declarada** — el documento marca explícitamente qué hipótesis siguen abiertas tras las 3 entrevistas (modo offline sin LLM no preguntado, validación comercial pendiente); (4) **bitácora versionada** — 3,000+ líneas de `PROGRESS.md` al cierre del semestre, trazabilidad que no se improvisa.
 
 ---
 
 ## 11. Roadmap a 12 meses
 
-Si el proyecto continúa post-Demo Day como producto comercial (decisión a tomar por el equipo después del 14 de mayo 2026):
+Si el proyecto continúa post-Demo Day como producto comercial:
 
-| Trimestre | Producto | Negocio | Operativo |
-|---|---|---|---|
-| **Q1 (may-jul 2026)** | Detectar y resolver los huecos cubiertos en F6-F8 con feedback de entrevistas. Cobertura AppDB v2. CI/CD con GitHub Actions. Landing con Stripe + Cal.com. | Show HN + 15 artículos Dev.to. 50 outreach personalizados LATAM. Primer pilot 90 días firmado. | Setup operativo (LLC o equivalente, dominio, infra cloud staging). Estructura legal del equipo. |
-| **Q2 (ago-oct 2026)** | Features Team que pidan los pilotos (SSO Google/GitHub OAuth, RBAC básico, panel de equipo). Detectores extra basados en patterns no cubiertos en v1. Workload export a Notion/Linear. | **Nerdearla 2026** (sponsor + demos). 3-5 pilotos activos. Primer cliente pagando. | Decisión: continuar como producto comercial o cerrar como proyecto académico. Si continúa: estructura formal de equipo. |
-| **Q3 (nov 2026-ene 2027)** | Modo offline production-ready. SAML/SSO empresarial. Audit logs. Detectores custom (Enterprise). Caché agresiva de LLM para reducir costo variable. | **Finnosummit / Fintech Week MX** (sponsor + demos). Primer Enterprise iniciado. Caso de estudio con primer cliente. | Primer hire AE LATAM (Q3 tardío si pipeline lo justifica). |
-| **Q4 (feb-may 2027)** | Postgres 17/18 compatibility verificada (sandbox ya en PG18, validar AppDB v3 cuando aparezca). Tests de coverage >70%. Stack de monitoreo interno (Datadog o equivalente). | Cierre Q4 con 10 clientes pagando, $60-100 K ARR. Caso de estudio público publicado. | AE LATAM operando con quota. Founders dedicados a producto + Enterprise. |
+- **Q1 (may-jul 2026):** GitHub Action CI + primer paso del monitor de degradación + cobertura AppDB v2 + landing con Stripe + Cal.com. Show HN, 15 artículos Dev.to, 50 outreach LATAM. Setup legal y staging.
+- **Q2 (ago-oct 2026):** SSO básico + RBAC + detectores extra + workload export. **Nerdearla 2026** sponsor. 3-5 pilotos activos, primer cliente pagando. Decisión: continuar comercial o cerrar académico.
+- **Q3 (nov 2026 - ene 2027):** Modo offline production-ready, SAML empresarial, audit logs, detectores custom Enterprise. **Finnosummit / Fintech Week MX**. Primer Enterprise + caso de estudio público. Primer hire AE LATAM si pipeline lo justifica.
+- **Q4 (feb-may 2027):** PG17/18 compat verificada, coverage >70%. Cierre con 10 clientes pagando, $60-100 K USD ARR. AE LATAM con quota.
 
-**Visión a 1 año (mayo 2027):** producto estable con 10 clientes LATAM pagando, $60-100 K ARR, catálogo de patterns SEO-positioned, primer hire de sales, runway con bootstrapped (sin VC).
-
-**Visión a 4 años (mayo 2030):** SOM medio alcanzado — $850 K ARR, ~60-100 cuentas Team activas, expansión a España validada, partner program con 3-5 consultoras LATAM operando.
+**Visión 1 año (2027):** 10 clientes LATAM, $60-100 K ARR, primer hire de sales, bootstrapped sin VC. **Visión 4 años (2030):** SOM medio $850 K ARR, 60-100 cuentas Team, expansión a España, partner program con 3-5 consultoras.
 
 ---
 
 ## 12. Ask
 
-### En contexto académico (Demo Day, 14 de mayo 2026)
+**Académico (Demo Day, 14-may-2026):** validación del modelo de detección y guardrails frente al jurado y equipos rivales (PgGuardian, PgVault) — defensas a "¿cómo evitan alucinaciones?", "¿qué pasa si su LLM se cae?", "¿por qué pagar vs ChatGPT?" en `business/qa-prep.md` (F19) y verificables en código (R1, R3, R4, R6, R7). Crédito justo por la disciplina arquitectónica codificada y testeada.
 
-- **Validación del modelo de detección y los guardrails** frente al jurado evaluador y los equipos rivales (PgGuardian y PgVault). En particular, defensa frente a preguntas tipo: "¿cómo evitan alucinaciones?", "¿qué pasa si su LLM se cae?", "¿por qué un dev pagaría esto en vez de usar ChatGPT?" — respuestas en `business/qa-prep.md` (F19) y verificables en código (R1, R3, R4, R6, R7).
-- **Crédito justo por la disciplina arquitectónica**, no solo por el output visible: la regla #1 del proyecto está codificada y testeada, no es marketing.
+**Comercial (post-Demo, si el equipo decide continuar):** introducciones a 5-10 CTOs/tech leads LATAM en fintech, healthtech y SaaS B2B para pilotos gratuitos de 90 días (profesores de la materia, ex-alumnos en industria, programa de Innovación y Emprendimiento Anáhuac); mentoría en founder-led-sales LATAM (ciclo de procurement mexicano, eventos que sí valen sponsor); espacio de validación verano 2026 para el plan Q1 (Show HN + outreach + primer pilot) antes de la decisión definitiva del equipo.
 
-### En contexto comercial (post-Demo, si el equipo decide continuar)
-
-- **Introducciones a 5-10 CTOs / tech leads LATAM** en fintech, healthtech y SaaS B2B con Postgres en producción para los primeros pilotos gratuitos de 90 días. Profesores de la materia, ex-alumnos en industria, contactos del programa de Innovación y Emprendimiento de la Universidad Anáhuac.
-- **Mentoría en la motion founder-led-sales para LATAM**: experiencia previa cerrando ventas SaaS B2B en mercado mexicano (qué ciclo de procurement esperar, cómo manejar referencias cambiarias en USD, qué eventos sí valen el sponsor).
-- **Espacio de validación durante el verano 2026** para correr el plan Q1 del roadmap (Show HN + outreach + primer pilot) antes de la decisión definitiva del equipo sobre continuar como producto comercial.
-
-### En contexto de evaluación de la rúbrica del curso
-
-- Criterio 1.2 (justificación técnica): documentado en `docs/arquitectura.md` (F2) con 7 decisiones técnicas, alternativas descartadas y trade-offs aceptados.
-- Criterio 2.1 (cobertura): 18/20 queries plantadas en AppDB v1, 0/10 falsos positivos. Test de bloqueo `test_coverage_meets_rubric_target` en CI.
-- Criterio 2.2 (resiliencia): modo "LLM apagado" funcional, validado en pruebas de aislamiento de errores (E8).
-- Criterio 3 (visión de producto y negocio, 20 pts): este documento + los 5 documentos fuente (F3, F11, F12, F13, F14).
-- Criterio 1.2 declaración de IA (penalización -5 pts por omisión): declarada en sección 11 del README, sección 8 de `docs/arquitectura.md`, y aquí en este documento.
+**Evaluación rúbrica:** Criterio 1.2 técnico (`docs/arquitectura.md` F2, 7 decisiones con alternativas) · 2.1 cobertura (18/20 AppDB v1, 0/10 FP, test de bloqueo en CI) · 2.2 resiliencia (modo "LLM apagado" validado en E8) · 3 producto y negocio (este doc + F3/F11/F12/F13/F14) · 1.2 declaración de IA (README §11 + `arquitectura.md` §8 + este doc).
 
 ---
 
@@ -496,7 +417,7 @@ Si el proyecto continúa post-Demo Day como producto comercial (decisión a toma
 - **Diferenciador defendible:** `business/diferenciador.md` (F14).
 - **Guion de entrevistas:** `business/guion-entrevistas.md` (F5).
 - **Lista de candidatos a entrevistar:** `business/lista-entrevistados.md` (F4).
-- **Entrevistas ejecutadas:** `business/entrevista-1.md`, `entrevista-2.md`, `entrevista-3.md` (F6/F7/F8) — pendientes a la fecha de este documento.
+- **Entrevistas ejecutadas (3 de 3):** `business/entrevista-1.md` (F6 — Carlos Orellán, DBA), `business/entrevista-2.md` (F7 — Jos Lugo, ingeniero fullstack), `business/entrevista-3.md` (F8 — Raúl de la Breña, Tech Lead Backend fintech).
 
 ---
 
@@ -534,4 +455,4 @@ Si el proyecto continúa post-Demo Day como producto comercial (decisión a toma
 
 ---
 
-> **Nota de mantenimiento:** este archivo y `business/negocio.docx` deben contener la misma información. Si actualizas el `.md` (por ejemplo, al cerrar F6/F7/F8 y llenar las secciones marcadas `[PENDIENTE: ENTREVISTAS]`), refleja los cambios también en el `.docx` antes de la entrega final del Demo Day. Si las entrevistas cambian materialmente alguna hipótesis (rango de precio, persona, hallazgo central), agregar entrada en `PROGRESS.md` explicando qué cambió y por qué.
+> **Nota de mantenimiento:** este archivo y `business/negocio.docx` deben contener la misma información. **El `.docx` quedó desincronizado tras la actualización del 2026-05-13 que integró F7+F8** (cabecera, §2.3, §3.1 tabla de 3 entrevistas, §3.3 9 insights consolidados, §6.3 validación de pricing por Raúl, §11 roadmap y referencias internas). Regenerar `negocio.docx` antes de la entrega final del Demo Day. Si los pilotos post-Demo Day cambian materialmente alguna hipótesis (rango de precio, persona, hallazgo central), agregar entrada en `PROGRESS.md` explicando qué cambió y por qué.

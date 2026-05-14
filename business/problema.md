@@ -27,6 +27,19 @@ Administra 3 bases de datos Postgres en producción (migración en curso hacia ~
 | **Preocupación de seguridad** | Que la herramienta NO tenga privilegios de escritura. Read-only es innegociable. |
 | **Decisor de compra** | El CTO, no el DBA/dev. |
 
+**Entrevista 2 — Jos Lugo, Ingeniero de software (fullstack)**
+Maneja 2 bases de datos Postgres en producción (~500 MB a 1 GB cada una, ~20 tablas).
+
+| Señal | Dato |
+|-------|------|
+| **Flujo de diagnóstico manual** | Descartar red/intermitencias → revisar código → revisar queries y tablas → verificar índices. Sin herramientas especializadas. |
+| **Tiempo invertido** | ~10 horas al mes en optimización de queries. Significativamente más que Carlos (1 h/mes). |
+| **Anti-pattern real sufrido** | Reporte con múltiples JOINs (producto cartesiano) + índices faltantes. Tardaba 2 minutos; lo redujeron a la mitad. El fix tomó **una semana completa**. |
+| **Sin herramientas especializadas** | No usa ninguna herramienta especializada de Postgres. Proceso completamente manual. |
+| **Punto de integración deseado** | En la fase de desarrollo, en ambientes de dev/staging. Más temprano en el ciclo que Carlos (CI/CD). |
+| **Preocupación de seguridad** | Información confidencial de clientes. Prefiere NO dar acceso a producción. Quiere garantía de que no se guardan logs ni datos. Valora poder elegir a qué tablas dar acceso. |
+| **Decisor de compra** | Dual: líder de infraestructura (técnico) + gerente (aprobación de inversión). |
+
 ### 2.2 Datos secundarios (fuentes públicas)
 
 | Fuente | Dato relevante |
@@ -93,7 +106,7 @@ LLM explica en lenguaje claro por qué importa
 
 ## 4. Segmentos afectados
 
-Basado en la entrevista y el análisis de mercado (F12):
+Basado en las entrevistas y el análisis de mercado (F12):
 
 | Segmento | Tamaño del dolor | Willingness to pay | Notas |
 |----------|-----------------|-------------------|-------|
@@ -109,9 +122,9 @@ Basado en la entrevista y el análisis de mercado (F12):
 
 | Concepto | Estimación conservadora | Fuente |
 |----------|------------------------|--------|
-| Tiempo de DBA/dev en diagnóstico reactivo | 1-4 horas/mes | Entrevista Carlos: 0.5-1 h/mes (equipo chico). Percona survey: equipos grandes reportan hasta 2 días/mes. |
+| Tiempo de DBA/dev en diagnóstico reactivo | 1-10 horas/mes | Carlos: 0.5-1 h/mes. Jos: ~10 h/mes. Percona survey: equipos grandes reportan hasta 2 días/mes. |
 | Costo de hora de dev backend LATAM | $25-50 USD/hora | Glassdoor, Levels.fyi (ajustado LATAM) |
-| Costo mensual estimado del problema | $25-200 USD/equipo/mes | Solo tiempo directo. No incluye costo de incidentes, downtime, o deuda técnica acumulada. |
+| Costo mensual estimado del problema | $25-500 USD/equipo/mes | Solo tiempo directo. Jos: 10 h × $25-50 = $250-500/mes. No incluye costo de incidentes, downtime, o deuda técnica acumulada. |
 | Costo de un incidente de producción por query lenta | $500-5,000 USD | Estimación basada en downtime reportado en la industria (fuente: Gartner cost-of-downtime benchmarks) |
 
 ### ROI de PgPilot
@@ -124,15 +137,15 @@ A $29 USD/dev/mes (tier Pro), un equipo de 5 devs paga $145/mes. Si PgPilot ahor
 
 | Hipótesis | Estado | Evidencia |
 |-----------|--------|-----------|
-| Los equipos diagnostican queries de forma manual y reactiva | ✅ Validada | Carlos: "actuamos por eventos", flujo manual logs→CPU→EXPLAIN |
-| SELECT * es un anti-pattern común que causa dolor real | ✅ Validada | Carlos: caso real resuelto manualmente |
-| No usan herramientas especializadas de Postgres | ✅ Validada | Carlos: solo Rapid7/CloudWatch + EXPLAIN manual |
-| La integración ideal es en CI/CD (pull request) | ✅ Validada | Carlos: "lo pondríamos en el pull request" |
-| Read-only es requisito innegociable | ✅ Validada | Carlos: preocupación principal es privilegios de escritura |
-| El CTO es el decisor de compra, no el dev | ✅ Validada | Carlos: "normalmente es el CTO" |
-| Willingness to pay de $29/dev/mes en LATAM | ⬜ Pendiente | Carlos no expresó objeción al rango $50-200/BD, pero no se validó precio específico por dev |
-| El dolor crece con el tamaño de la BD | ⬜ Pendiente | Carlos está en migración (pocos MB → 30 GB). Falta seguimiento post-migración. |
-| Los equipos adoptarían PgPilot sin LLM (modo offline) | ⬜ Pendiente | No se preguntó en la entrevista |
+| Los equipos diagnostican queries de forma manual y reactiva | ✅ Validada (2/2) | Carlos: "actuamos por eventos", flujo manual. Jos: proceso manual sin herramientas, una semana para resolver un query lento. |
+| Los anti-patterns comunes causan dolor real | ✅ Validada (2/2) | Carlos: SELECT * (D9). Jos: JOINs sin índices (D16) + producto cartesiano. Ambos los resolvieron manualmente. |
+| No usan herramientas especializadas de Postgres | ✅ Validada (2/2) | Carlos: solo Rapid7/CloudWatch + EXPLAIN. Jos: ninguna herramienta especializada. |
+| La integración ideal es en desarrollo/CI | ✅ Validada (2/2) | Carlos: pull request/CI/CD. Jos: fase de desarrollo, ambientes de staging. |
+| Seguridad y privacidad de datos es prioridad | ✅ Validada (2/2) | Carlos: read-only innegociable. Jos: no dar acceso a producción, garantía de no guardar logs/datos, control granular por tabla. |
+| El decisor de compra NO es el dev individual | ✅ Validada (2/2) | Carlos: CTO. Jos: líder de infraestructura + gerente. |
+| Willingness to pay de $29/dev/mes en LATAM | ⬜ Pendiente | Ninguno expresó objeción al rango $50-200/BD, pero no se validó precio específico por dev. |
+| El dolor crece con el tamaño de la BD | ⬜ Pendiente | Carlos en migración (→30 GB). Jos con BDs chicas (500 MB-1 GB) pero ya invierte 10 h/mes. |
+| Los equipos adoptarían PgPilot sin LLM (modo offline) | ⬜ Pendiente | Jos prefiere ambientes previos sobre producción — valida indirectamente el modo offline/bundle. No se preguntó explícitamente. |
 
 ---
 

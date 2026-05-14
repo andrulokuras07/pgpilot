@@ -110,6 +110,29 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ---
 
 
+## 2026-05-13 (F6 + F7 + F9)
+
+### Avances
+
+#### F6 — Entrevista 1: Carlos Orellán (DBA)
+- **Autor:** Diego. Rama `docs/F6-F9-entrevista-problema`.
+- **Archivos:** `business/entrevista-1.md`, `interviews/Interview Carlos Orellán.mp4` (local, excluido por `.gitignore`)
+- **Notas:** Entrevista de customer discovery grabada en videollamada. Respuestas resumidas por pregunta + 7 insights clave. Hallazgos principales: diagnóstico manual y reactivo (logs→CPU→EXPLAIN), SELECT * como anti-pattern real sufrido (D9), integración ideal en CI/CD (pull request), read-only innegociable, CTO como decisor de compra, no usa herramientas especializadas de Postgres.
+
+#### F7 — Entrevista 2: Jos Lugo (Ingeniero de software)
+- **Autor:** Diego. Rama `docs/F6-F9-entrevista-problema`.
+- **Archivos:** `business/entrevista-2.md`, `interviews/Interview Jos Lugo.mp4` (local, excluido por `.gitignore`)
+- **Notas:** Entrevista de customer discovery grabada en videollamada. Hallazgos principales: 10 h/mes en optimización (dolor significativo), caso real de JOINs sin índices que tomó una semana resolver, cero herramientas especializadas, prefiere usar la herramienta en desarrollo/staging (no producción), preocupación por privacidad de datos (no guardar logs), decisor dual (líder infra + gerente).
+
+#### F9 — Definición del problema con datos (actualizado con F7)
+- **Autor:** Diego. Rama `docs/F6-F9-entrevista-problema`.
+- **Archivos:** `business/problema.md`, `business/CLAUDE.md`
+- **Notas:** Definición del problema alimentada por las entrevistas F6-F7 y fuentes secundarias (Stack Overflow, Percona, Gartner). Incluye anatomía del ciclo actual vs. PgPilot, segmentos afectados, cuantificación del dolor ($25-500/equipo/mes), ROI estimado, y tabla de 9 hipótesis (6 validadas con 2/2 entrevistas, 3 pendientes). Pendiente: agregar datos de F8 cuando se realice.
+- **Tests:** N/A (documentación)
+
+---
+
+
 ## 2026-05-13 (F16 — coverage del backend documentado)
 
 ### Avances

@@ -14,3 +14,37 @@ markers = [
     "integration: tests que requieren AppDB corriendo en localhost:5434",
     "llm: tests que llaman a la API de Anthropic (requieren ANTHROPIC_API_KEY)",
 ]
+
+[tool.coverage.run]
+# Mide cobertura del backend (codigo Python de los modulos) excluyendo
+# tests, scripts auxiliares y el frontend.
+branch = true
+source = [
+    "backend",
+    "conector",
+    "ia",
+    "motor",
+    "sandbox",
+    "workload",
+]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/.venv/*",
+    "scripts/*",
+    "frontend/*",
+]
+
+[tool.coverage.report]
+# Lineas que no cuentan como ejecutables para el calculo de cobertura.
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
+precision = 1
+# F16 (rubrica): cobertura minima del backend.
+fail_under = 50

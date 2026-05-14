@@ -110,7 +110,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ---
 
 
-## 2026-05-13 (F6 + F9)
+## 2026-05-13 (F6 + F7 + F9)
 
 ### Avances
 
@@ -132,12 +132,318 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+
+## 2026-05-13 (F16 — coverage del backend documentado)
+
+### Avances
+
+#### F16 — Tests automatizados con coverage decente
+- **Autor:** David. Rama `feat/F16-tests-coverage`.
+- **Archivos:**
+  `pyproject.toml` (secciones nuevas `[tool.coverage.run]` y
+  `[tool.coverage.report]`: `branch=true`, `source=[backend, conector,
+  ia, motor, sandbox, workload]`, `omit=tests/scripts/frontend/.venv`,
+  `fail_under=50`, `precision=1`, `show_missing=true`, `exclude_lines`
+  para `pragma: no cover`, `raise NotImplementedError`,
+  `if __name__ == "__main__":` y `if TYPE_CHECKING:`),
+  `requirements.txt` (agregado `pytest-cov>=5.0,<8` justo después de
+  `pytest`),
+  `.gitignore` (agregadas las rutas `.coverage.*` y `coverage.xml`
+  para que los artefactos JSON/XML que produce `pytest --cov` no se
+  versionen — `.coverage` y `htmlcov/` ya estaban),
+  `README.md` (sección "Tests y calidad" reescrita: agregado bloque
+  "Cobertura actual del backend (F16)" con tabla de métricas, comando
+  exacto para regenerar el número, y nota explicando qué se excluye y
+  por qué — alineado con `fail_under=50`),
+  `PROGRESS.md` (esta entrada).
+- **Notas:**
+  - **F16 pide:** "asegurar que tests existentes cubren al menos 50%
+    del código backend. Correr `pytest --cov` y documentar el número
+    en README. Esto es bonus +3 pts." **Hecho-cuando: coverage >50%.**
+  - **Resultado medido:** `pytest -m "not integration and not llm"
+    --cov` reporta **85.3% (2 119 / 2 420 líneas, 642 / 816 branches)**
+    sobre la suite de 403 tests unitarios. Bonus +3 desbloqueado con
+    35 puntos de margen sobre el mínimo. Tiempo de la corrida: ~8 s.
+  - **Por qué `not integration and not llm`:** los tests integration
+    requieren Docker (`appdb` + `sandbox` arriba con `APPDB_TEST_TIMEOUT_MS=180000`)
+    y los `llm` requieren `ANTHROPIC_API_KEY`. La rúbrica F16 mide
+    cobertura del código del backend, no la disponibilidad de
+    infraestructura. Cuando esos suites corran (CI con Docker o
+    desarrollo local con contenedores), van a sumar cobertura
+    adicional sobre `sandbox/setup.py` (16.7% hoy), `sandbox/explain.py`
+    (28.6%), `conector/schema.py` (24.4%) y `conector/stats.py` (31.2%)
+    — los archivos con mayor superficie sin cubrir, todos
+    dependientes de una BD viva. La cobertura unit-only ya supera el
+    50% solita, así que F16 está cerrada sin necesidad de levantar
+    Docker.
+  - **`fail_under = 50`:** se eligió igualar el mínimo de la rúbrica
+    para que `pytest --cov` rompa CI ante regresiones. No se subió a
+    85 (que sería el "lock-in" del número actual) para no penalizar
+    contribuciones legítimas que añadan código sin tests todavía;
+    50 es el piso negociado por la rúbrica.
+  - **Archivos peor cubiertos (todos con dependencia de BD viva, por
+    eso no aparecen en unit tests):** `sandbox/setup.py` 16.7%,
+    `conector/schema.py` 24.4%, `sandbox/explain.py` 28.6%,
+    `conector/stats.py` 31.2%, `conector/pool.py` 40.0%,
+    `conector/offline.py` 42.9%, `sandbox/pool.py` 44.4%. El resto
+    de módulos está ≥56% (la mayoría >85%). Recomendado mover estos
+    a tests `integration` si se quiere subir el número global a 90%+
+    en una iteración futura.
+  - **Test pre-existente que falla en Windows (no introducido por
+    F16):** `tests/ia/test_logs.py::test_log_llm_interaction_oserror_devuelve_none_sin_propagar`
+    falla en Windows porque `chmod(0o400)` sobre un directorio
+    temporal no produce un `OSError` al escribir (semántica
+    POSIX-only). El test fue agregado en `9754ea6` y pasaba bajo
+    macOS/Linux/WSL2. **No se tocó** en esta rama (fuera de scope
+    de F16). Si bloquea CI en máquinas Windows, candidato a marcarse
+    con `@pytest.mark.skipif(sys.platform == "win32", reason="chmod
+    no aplica en NTFS")` en un PR posterior.
+  - **Convención R15:** no se modificó ningún `CLAUDE.md` de módulo
+    porque F16 no cambia API pública ni formato de datos de ningún
+    módulo. Sólo agrega config de tooling (`pyproject.toml`),
+    dependencias de dev (`pytest-cov`) y documentación (README +
+    PROGRESS).
+- **Tests:** ✅ Verde. 403 passed, 1 failed pre-existente (Windows-only,
+  no introducido por F16), 82 deselected (`integration`/`llm`).
+  Coverage 85.3% (`fail_under = 50` cumplido con margen).
+
+---
+
+## 2026-05-13 (F15 — documento de negocio consolidado)
+
+### Avances
+
+#### F15 — Documento de negocio consolidado en `/business/negocio.md`
+- **Autor:** AlexRiggs. Rama `docs/F15-negocio-consolidado`.
+- **Archivos:**
+  `business/negocio.md` (nuevo — documento de 12 secciones siguiendo
+  la **Plantilla 3 de 3** del entregable oficial del profesor en
+  `4.- Plantillas_Entrega.docx`: resumen ejecutivo, problema con 2.1/2.2/2.3,
+  investigación de usuarios con 3.1/3.2/3.3, solución con 4.1 funcionalidades
+  core, análisis competitivo con 5.1/5.2/5.3, modelo de negocio con
+  6.1/6.2/6.3, tamaño de mercado con 7.1/7.2/7.3/7.4, go-to-market con
+  8.1/8.2, diferenciador defendible, equipo, roadmap 12 meses, ask),
+  `business/negocio.docx` (la plantilla oficial del profesor —
+  Plantilla 3 de `4.- Plantillas_Entrega.docx` extraída a este archivo
+  por el usuario — llenada con el contenido derivable de F3/F11/F12/
+  F13/F14 vía script python-docx temporal (`_fill_negocio_docx.py`
+  en raíz, borrar antes del commit según convención `business/CLAUDE.md`).
+  Se preservaron headings, estilos de tabla, sombreado de cajas
+  amarillas, párrafos "[Instrucción: ...]" en cursiva gris (el equipo
+  los borra manualmente antes de la entrega final) y los marcos
+  "¿Qué es esto?", "Requisito obligatorio" y checklist final. Tabla
+  comparativa §5.1 limitada a 3 competidores (pganalyze, EverSQL,
+  pgMustard) por el límite de columnas de la plantilla — DBtune se
+  cubre solo en §5.2 análisis honesto. Checkboxes §6.1 marcados [x]
+  en "Por seat" y "Freemium con tier pago"),
+  `business/CLAUDE.md` (Estado actual: F15 marcado 🟡 en lugar de ⬜
+  por contenido parcial; Estructura interna: nueva línea para
+  `negocio.md` + `.docx`),
+  `4.- Plantillas_Entrega.docx` (nuevo en la raíz — plantilla oficial
+  del profesor copiada por el usuario para que el entregable de F15
+  + F30 quede versionado y futuros agentes lo encuentren sin pedirlo),
+  `PROGRESS.md` (esta entrada).
+- **Notas:** F15 pide "integrar F3, F9, F10, F11, F12, F13, F14 en un
+  solo documento (8-12 páginas) con índice. Usar la plantilla de
+  entrega que les entregaron". La plantilla 3 ("Documento de Negocio")
+  tiene 12 secciones obligatorias + checklist final. Todas redactadas;
+  esta entrada documenta dos pasos:
+  - **Paso 1 (versión inicial):** F15 redactado con F3/F11/F12/F13/F14
+    cuando F6/F9/F10 todavía estaban abiertos. Secciones 2.1, 2.2, 2.3,
+    3.1 y 3.3 quedaron marcadas `[PENDIENTE: ENTREVISTAS]` como
+    placeholder explícito siguiendo la convención de la plantilla
+    ("Si una sección no aplica a tu proyecto, escríbelo explícitamente:
+    'No aplica porque...'").
+  - **Paso 2 (integración F6/F9/F10):** mientras se trabajaba la rama
+    `docs/F15-negocio-consolidado`, los PRs #58 (F6 entrevista Carlos
+    Orellán + F9 problema) y #60 (F10 persona Andrés Villanueva) se
+    mergeáron a main. Los hallazgos cualitativos de esos tres tickets
+    se integraron a §2.2 (persona Andrés Villanueva, 11 atributos +
+    cita representativa + perfiles secundarios), §2.3 (frecuencia/
+    severidad cuantificadas con datos de Carlos + Andrés + benchmarks
+    Gartner/Glassdoor citados en F9), §3.1 (Carlos Orellán como
+    entrevistado 1 de 3, F7/F8 marcados como pending de agendamiento),
+    §3.3 (7 insights validados de F6+F10, 3 hipótesis pendientes para
+    F7/F8, 4 cambios provisionales de producto/pricing/GTM derivados).
+    La sección §10 (equipo) sigue con `[PENDIENTE: COMPLETAR DATOS DEL
+    EQUIPO]` para nombres, matrículas y reparto técnico exacto.
+  - **Decisión clave de redacción.** F15 depende formalmente de
+    F9 (problema) y F10 (persona) que aún no se han cerrado porque
+    dependen de F6/F7/F8 (3 entrevistas, requisito obligatorio de la
+    plantilla: "si no las hicieron, este criterio se va a 0"). El
+    usuario decidió **avanzar F15 con todo lo derivable de F3/F11/
+    F12/F13/F14** y dejar marcadores explícitos en las secciones que
+    requieren los hallazgos cualitativos de las entrevistas. Esto
+    permite cerrar el documento al 80-85% antes del Demo Day y no
+    bloquear la evaluación de los demás criterios; las entrevistas
+    se ejecutan en paralelo y se rellenan los huecos cuando aterricen.
+    La plantilla del profe acepta esto: dice literal "Si una sección
+    no aplica a tu proyecto, escríbelo explícitamente: 'No aplica
+    porque...'" — los marcadores son la versión más fuerte de eso.
+  - **Audiencia y registro.** El documento está escrito para una
+    audiencia mixta: evaluador del curso (criterio 3, 20 pts) +
+    inversionista (como pide la plantilla: "Comprador imaginario de
+    este documento: un inversionista evaluando si invertir en su
+    startup"). Tono de confianza honesta — se reconocen explícitamente
+    los huecos (entrevistas pendientes, precios sin validar, foco LATAM
+    erosionable si pganalyze entra al mercado, hipótesis a confirmar)
+    en lugar de venderlo como certeza.
+  - **Consolidación, no copia.** El documento no es un copy-paste de
+    `competencia.md` + `pricing.md` + `mercado.md` + `gtm.md` +
+    `diferenciador.md`. Es una síntesis: cada sección referencia el
+    documento fuente pero se reescribe para narrar como un documento
+    único de 8-12 páginas. Los detalles operacionales (sensibilidades
+    de TAM, costo unitario detallado, tabla mes-a-mes del GTM) quedan
+    en los documentos fuente; el `negocio.md` da la línea ejecutiva
+    de cada uno. Esto evita el problema típico del documento
+    Frankenstein donde el lector tiene que reconstruir el hilo
+    narrativo.
+  - **Verificación de fidelidad contra los documentos fuente** (no se
+    inventaron cifras ni reescribieron sin cruzar):
+    - TAM $800 M USD ARR, SAM $34 M, SOM medio $850 K a 4 años →
+      coinciden con `mercado.md` §2/§3/§4.
+    - Tiers $0 / $29 / $49 / $99+ con piso $5 K Enterprise →
+      coinciden con `pricing.md` §2.
+    - Margen bruto Pro ≈ 97% al uso 30 análisis/mes → coincide con
+      `pricing.md` §3.
+    - 4 competidores principales (pganalyze, EverSQL, DBtune,
+      pgMustard) → coinciden con `competencia.md` §2.
+    - 4 defensores arquitectónicos + foco LATAM transversal →
+      coinciden con `diferenciador.md` §3 y §4.
+    - Plan mes-a-mes GTM (Show HN, Nerdearla, Finnosummit, 10 clientes
+      mes 12, CAC $1,500, LTV/CAC 17×, costo $15 K USD) → coinciden
+      con `gtm.md` §2-§4.
+    - Cobertura 18/20 AppDB v1, 0/10 FP → coinciden con la sección
+      "Estado actual" de este PROGRESS.md.
+    - Las 9 preguntas del guion → copiadas literal de
+      `guion-entrevistas.md` (F5).
+  - **Entregable en .docx generado.** La plantilla acepta
+    "formato Word (.docx) o Markdown (.md), lo que prefieran". Se
+    generaron ambos (par `.md` + `.docx`, ver `business/CLAUDE.md`
+    Convenciones). El `.docx` se llenó con `python-docx` vía script
+    temporal `_fill_negocio_docx.py` (a borrar antes del commit
+    siguiendo el patrón de F3/F11/F12/F13/F14). El script preserva
+    el formato base de la plantilla del profesor: no toca headings,
+    no elimina párrafos "[Instrucción: ...]" en cursiva (el equipo
+    los borra manualmente antes de la entrega final, según la propia
+    plantilla), no elimina los marcos "¿Qué es esto?" / "Requisito
+    obligatorio" / checklist final. Solo modifica el contenido de
+    cajas amarillas (single-cell tables placeholder) y tablas
+    estructurales con headers (persona, comparativa, tiers, roadmap).
+    Constraint detectado durante la ejecución: la tabla comparativa
+    §5.1 de la plantilla solo tiene espacio para 3 competidores +
+    Nosotros (5 columnas), así que DBtune se omitió de la tabla y
+    se cubre solo en §5.2 análisis honesto — donde no hay límite
+    de N competidores y se preserva la fidelidad contra
+    `competencia.md`.
+- **Cumplimiento de reglas:**
+  - **R15:** PROGRESS.md + `business/CLAUDE.md` actualizados en el
+    mismo push que `business/negocio.md`. No hay cambios de API ni de
+    decisiones técnicas, así que ningún `CLAUDE.md` de módulo técnico
+    necesita actualización.
+  - **Honestidad explícita** (espíritu F3, regla del proyecto): el
+    documento marca claramente qué secciones están pendientes
+    (`[PENDIENTE: ENTREVISTAS]`, `[PENDIENTE: COMPLETAR DATOS DEL
+    EQUIPO]`), reconoce 5 hipótesis aún por validar (rangos de precio,
+    willingness-to-pay LATAM, percepción del dolor, decisor de compra,
+    workflow preferido), y declara abiertamente trade-offs aceptados
+    (foco LATAM erosionable si competidor entra al mercado;
+    diferenciadores no defendibles eliminados explícitamente en
+    §5.2 con su razón).
+  - **Declaración de uso de IA** (Criterio 1.2): no aparece como
+    sección dedicada en `negocio.md` porque ya está cubierta en F1
+    (sección 11 de README.md) y F2 (sección 8 de `docs/arquitectura.md`).
+    Duplicarla aquí inflaría el documento más allá del rango 8-12
+    páginas que la plantilla recomienda.
+  - **Nombres significativos** (R13): rama `docs/F15-negocio-consolidado`.
+  - **Crear ramas desde main** (memoria del usuario `branches-from-main`):
+    rama creada por el usuario manualmente desde `main`, no se stackeó
+    sobre `docs/F13-F14-gtm-diferenciador` aunque haya dependencia
+    conceptual.
+- **Tests:** N/A — F15 es documentación pura. No toca código
+  ejecutable. La suite del proyecto sigue como estaba al cierre de
+  F1/F2 (cobertura AppDB v1 sigue en 18/20, 0/10 falsos positivos
+  sobre queries sanas).
+- **Pendiente vigilar:**
+  - F6 cerrada (Carlos Orellán, ya integrada). F7 y F8 (entrevistas
+    2 y 3) siguen en agendamiento — cuando aterricen, agregar filas en
+    §3.1 y expandir §3.3 con los hallazgos nuevos. Si no se ejecutan
+    antes del Demo Day, dejar las dos filas `[PENDIENTE: F7/F8]` con
+    nota explícita "No aplica porque no se completaron entrevistas en
+    el sprint" siguiendo la convención de la plantilla.
+  - Llenar la tabla de equipo en §10 con los 5 nombres reales,
+    matrículas, áreas y reparto técnico. Cruzar contra
+    `git shortlog -sn` (autores en main: AlexRiggs, Andrés Angulo,
+    EmilioATS01, Regvalenzuela, andrulokuras07, mrnun29, vidrr2005
+    — 7 cuentas para 5 personas, identificar duplicados antes de
+    llenar).
+  - **`business/negocio.docx` generado.** Si las entrevistas F6/F7/F8
+    cambian secciones marcadas `[PENDIENTE: ENTREVISTAS]`, regenerar
+    el `.docx` (re-correr `_fill_negocio_docx.py` con el script
+    actualizado o editar manualmente las cajas amarillas afectadas).
+    Si se editan ambas fuentes (`.md` y `.docx`), validar que no
+    diverjan antes del Demo Day.
+  - Actualizar §11 (Roadmap a 12 meses) si el equipo toma la decisión
+    formal post-Demo Day de continuar como producto comercial o
+    cerrar como proyecto académico (mencionado en `gtm.md` §6 también).
+  - Si las hipótesis de pricing se falsan en entrevistas
+    (ej. "no, $15"), actualizar §6.3, §1 (resumen ejecutivo) y
+    `pricing.md` §2 en coordinación con F11.
+
+---
+
+
+## 2026-05-13 (F10 — user persona detallado)
+
+### Avances
+
+#### F10 — User persona detallado
+- **Autor:** Regina Valenzuela. Rama `docs/business/F10` (merged en main vía PR #60).
+- **Archivos:** `business/persona.md` (nuevo, F10 — user persona completo).
+- **Notas:** Persona "Andrés Villanueva", Tech Lead Backend 31 años en
+  fintech B2B de 45 personas en Monterrey, equipo de 8 devs, 3 BDs
+  Postgres en producción (~180 GB principal), sin DBA dedicado.
+  Documento incluye: contexto y un día típico, 5 pain points
+  específicos con citas representativas, tabla de herramientas
+  actuales con limitaciones, criterios de compra en orden de prioridad,
+  señales de alerta (qué lo haría NO comprar), relación con el pricing
+  (Pro lo compra solo; Team requiere al CTO). El bloqueador principal
+  — no poder pegar queries reales en herramientas externas por datos
+  sensibles de nómina — conecta directamente con los diferenciadores
+  R6/R7 de sanitización. Perfil secundario (Staff Engineer en empresa
+  50-200 devs y CTO fundador en empresa 5-15 devs) documentado al
+  final para cubrir variaciones del ICP. No requiere `.docx` (es
+  documento de proceso; se integrará en F15 como sección del documento
+  consolidado).
+- **Tests:** N/A (documentación de negocio, sin código).
+- **Nota de merge (Alex, 2026-05-13):** esta entrada se integró al
+  PROGRESS.md de la rama `docs/F15-negocio-consolidado` al pre-resolver
+  el conflicto con `origin/main`. PR #60 insertó esta entrada
+  rompiendo la cabecera de la sección F2; aquí se reubica como sección
+  propia entre F15 y F2 para mantener la estructura cronológica
+  limpia. PR #58 (F6 entrevista Carlos Orellán + F9 problema) y PR #61
+  (fase4 workload + sandbox) **no actualizaron PROGRESS.md** (violan
+  R15); registrar en una sesión posterior con sus autores.
+
+---
+
+
 ## 2026-05-13 (F2 — documento de arquitectura)
 
 ### Avances
 
+## 2026-05-13
+
+### Avances
+
+#### F10 — User persona detallado
+- **Autor:** Regina Valenzuela
+- **Archivos:** `business/persona.md` (nuevo, F10 — user persona completo)
+- **Notas:** Persona "Andrés Villanueva", Tech Lead Backend 31 años en fintech B2B de 45 personas en Monterrey, equipo de 8 devs, 3 BDs Postgres en producción (~180 GB principal), sin DBA dedicado. Documento incluye: contexto y un día típico, 5 pain points específicos con citas representativas, tabla de herramientas actuales con limitaciones, criterios de compra en orden de prioridad, señales de alerta (qué lo haría NO comprar), relación con el pricing (Pro lo compra solo; Team requiere al CTO). El bloqueador principal — no poder pegar queries reales en herramientas externas por datos sensibles de nómina — conecta directamente con los diferenciadores R6/R7 de sanitización. Perfil secundario (Staff Engineer en empresa 50-200 devs y CTO fundador en empresa 5-15 devs) documentado al final para cubrir variaciones del ICP. No requiere `.docx` (es documento de proceso; se integrará en F15 como sección del documento consolidado).
+- **Tests:** N/A (documentación de negocio, sin código).
+
 #### F2 — Documento de arquitectura en `/docs/arquitectura.md`
-- **Autor:** [PONER TU NOMBRE]. Rama `docs/F2-arquitectura`.
+- **Autor:** Regina Valenzuela. Rama `docs/F2-arquitectura`.
 - **Archivos:**
   `docs/arquitectura.md` (nuevo — documento de 9 secciones orientado a
   evaluadores del curso y a developers externos: visión general,
@@ -266,7 +572,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ### Avances
 
 #### F1 — README principal del repo en `README.md` (raíz)
-- **Autor:** [PONER TU NOMBRE]. Rama `docs/F1-readme`.
+- **Autor:** Regina Valenzuela. Rama `docs/F1-readme`.
 - **Archivos:**
   `README.md` raíz (reescrito completo — antes era el placeholder
   mínimo de E11 que enlazaba a los docs publicados; ahora es la guía
@@ -452,7 +758,7 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
   - Si el modelo Claude default (`DEFAULT_MODEL` en `ia/llm.py`)
     cambia, actualizar la sección 11 ("Uso de IA en el desarrollo").
 
-## 2026-05-14 (F17 — catálogo de patterns final)
+## 2026-05-13 (F17 — catálogo de patterns final)
 
 ### Avances
 

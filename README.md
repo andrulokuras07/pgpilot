@@ -342,7 +342,7 @@ git clone https://github.com/andrulokuras07/pgpilot.git
 cd pgpilot
 ```
 
-> Repo creado y mantenido por Andrés Angulo. Si el username de GitHub difiere, Andrés pasa el link exacto en el grupo de WhatsApp del equipo.
+
 
 ### 2. Levantar las bases de datos con Docker
 

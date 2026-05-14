@@ -330,7 +330,7 @@ Asumimos que ya tienes Git, Docker, Python y Node instalados según la sección 
 
 ```bash
 cd ~/code               # o donde quieras tener el proyecto
-git clone https://github.com/andresangulo/pgpilot.git
+git clone https://github.com/andrulokuras07/pgpilot.git
 cd pgpilot
 ```
 
@@ -338,7 +338,7 @@ cd pgpilot
 
 ```powershell
 cd C:\Users\<TuUsuario>\code   # o donde quieras
-git clone https://github.com/andresangulo/pgpilot.git
+git clone https://github.com/andrulokuras07/pgpilot.git
 cd pgpilot
 ```
 

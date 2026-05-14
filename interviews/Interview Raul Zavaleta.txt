@@ -1,0 +1,93 @@
+Hola Raul, buenas noches, entrevista para un producto que estamos desarrollando, que
+se llama PHPYLOT, que básicamente es para analizar queries y proponer mejoras para
+hacernos eficientes la base de datos, y bueno, empezamos con preguntas, este primero
+que nada, si nos puedes platicar en qué has trabajado dentro del mundo en las bases
+de datos. Sí, bueno, bien perfiles, desarrollador full stack y ingenier en software, mi experiencia
+con base de datos así desde la análisis de escena de implementación de diferentes modelos,
+específicamente el tema de postgres es desde la arquitectura de la base de datos, la
+intuimentación de oción premise, o directamente en la nube, la implementación de la arquitectura
+en el momento de desarrollar, y eso es porque la aplicación es disciplina. Perfecto. Bueno,
+empezamos con la primera pregunta que es, ¿cuántas bases de datos postgres manejas o
+has manejado en producción? ¿Cuál es el tamaño aproximado de la más grande? ¿Cuántas
+la verdad es que muchas se han tenido la fortuna de trabajar en diversos proyectos que
+tienen muchos bases de datos? Quiero que me interesa y que más de 100 bases de datos
+en lo que llevo de carrera, actualmente administramos alrededor de 15, 20 bases de datos,
+la más grande debe de rondar los tres teras de datos. Perfecto. Cuando te llega una
+queja de la apsta lenta, ¿cuáles son los primeros tres pasos que das para diagnosticar
+ese es un problema de cuál es? El primer nivel de suporte es realizar un tema de la
+pense y conectividad a la red para verificar si efectivamente es un tema de base de datos
+o si trata de un tema arquitectura de red, en el caso de que la red esté funcionando,
+normalmente tiene un formulario en la que terminamos con el usuario, si es un problema
+general, que pudiera ser un tema de la contemplación de la aplicación, un tema directamente
+de front-trata de backend, pero no de código, y normalmente cuando el problema es en una
+sección en particular en una pantalla donde todos los elementos de la pantalla cargan
+por una sección específica que no está funcionando, es donde en ese momento analizamos
+directamente en los logs, que está sucediendo con esa pantalla, que está general de su
+usuario, y a partir de ahí analizamos directamente la consulta. Y todo lo que nos
+haría. Ok, muy bien. ¿Qué herramientas utilizas hoy para analizar cuarislentas? Una
+cuaria específicamente es mediante las herramientas que nos provee posibles, específicamente
+utilizamos la versión enterprise de Deepiver, es la idea de base a los que utilizamos el
+cliente, y utilizamos el clásico pitch statesmen, el explain analyze para ver exactamente
+cuánto tiempo es que cosa está dentro, un cual y en particular.
+Muy bien. ¿Cuánto tiempo al menos estima que le dedicas a optimizar cuáles o a investigar
+problemas de herramientas en posibles? Yo varé un poco dependiendo del momento de un
+ciclo de vida en el que se encuentra el software, normalmente cuando está ahí en producción,
+yo creo que no más de unas tres, cuatro horas a mes, sin embargo en las etapas tempranas
+con el tema de la análisis, específicamente desarrollando y probando, haciendo está aquí,
+eso no puedes dedicarle entre a veces y eso a las otras semanas, cinco horas, que es mi
+volión. Muy bien. ¿Puedes contarme un caso reciente o que haya
+tenido a lo lado de tu carrera en donde una cualilentada ya causó un problema real en
+producción? ¿Cómo lo resoliste y cuantos datos? Sí, era una base de datos para un sistema
+logístico, para un empresa transnacional que se neutralizaba la información de los embarques,
+montaba en varios servidores aplicados de hósores, sin embargo la tabla principal donde
+se armazonaban estos embarques, llegaba justamente a los 300 o 400 llegades de datos, la tabla
+más pesada centralizada de toda la aplicación y por más que se tenían índices, llegaba un momento
+en las consultas específicas, podían tardar horas y era cero funcional. La solución fue
+partitionar la tabla de manera física en el disco duro del servidor y generar tablas de
+auditoría temporales. Entonces todos los días por vanananas se ejecutaba una cuéreo que
+lo naba con la función copy de postgres para no volver a ser el insert cierto número de embarques
+que se necesitaban para que estuvieran disponibles. Fue una solución que aplicaba al 90% de los
+casos, ya que normalmente las búsquedas en los embarques tienen que ver con las fechas más
+recientes. Entonces cuando el usuario necesitaba buscar baratos que eran relativamente recientes,
+es decir, más allá este año, con esa tabla clonada que disminuye el tamaño a 300 megas, 400 megas
+y algunos millones de registros y lo grabamos a ser la funcional. Cuando el usuario buscar
+históricos de 5, 6, 7, y más allá de atrás, seguíamos teniendo el mismo problema.
+Ok, perfecto. Si existieron una herramienta que analiza automáticamente tus queries detect
+anti patterns, se scans y necesarios índices faltantes, queries ineficientes y te da el SQL corregido
+listo para copiar en qué parte del flujo de trabajo crees que se podría utilizar.
+Bueno, si nos permites dividir como lo que mencionaba, herramientas de análisis, seguramente es
+parte del desarrollo del software. Una herramienta que analizara a nivel y digamos de arquitectura,
+si hay algún componente que no está funcionando, como por ejemplo, que algunas llaves de malarmada o que
+los índices no están funcionando de manera correcta, pero que serían en el tema de la análisis y se
+me dio de la arquitectura de la base de datos. Y una herramienta que pudiera detectar, digamos,
+en tiempo real, performance de una base de datos, pero sobre todo me indicara el público recto,
+creo que se puede utilizar en cualquier momento el chico de vida. Ya sea desde la etapa temprana de
+Stagging para buscar una mejor performance de ese video introducción y por el tema de
+su aportamiento de mantenimiento, pero sería maravillosa que conforme crezca la información de la base de datos,
+pudiera saber qué es lo que está fallando y sobre todo tener la respuesta, o sea, rápido para aplicar.
+Muy bien. ¿Qué te preocuparía de dar la acceso a una herramienta hacia tu base de datos en
+producción y qué garantías necesitarias? En sobre esa pregunta estamos en el entendido de que la
+herramienta está fuera de mi infraestructurada, es una herramienta de terceros, o está instalada en
+mi en un propio ambiente en promise. Es de terceros. Si fuera de terceros, el primer tema sería
+indiscutiblemente la seguridad de la conexión punto a punto de terminar que efectivamente seguro para
+el proveedor y seguro para la base de datos, tener una conexión externa de terceros y la segunda
+y más importante, seguro sería un tema de cómicamente lectura, hará una base de datos productiva que
+tiene tanta información, que es súper importante el tema de asegurar que los datos sementienen siempre,
+el tema de la privacidad, saber que mi información no se está analizando de ninguna manera,
+donde se vea con pornotido mi hermano de negocio, mi biológica de negocio y finalmente que se asegurara
+que el tratado de esa información es efínero y lo utilizas para lograr lo que realmente necesita
+del financiero de esas procesas, no sea demasiado de ninguna manera. Perfecto.
+¿Tú equipo tiene algún proceso formal de code review para queries con migraciones antes de que
+llena producción? Es específicamente para queries, no? El proceso de code review y de
+nuevas versiones, es un proceso integral y transversal de todas las áreas relacionadas al software,
+pero específicamente para el tema de queries, no? Ok, y la última pregunta es si esta herramienta
+costara entre 50 y 200 dólares al mes por base de datos, quién en tu empresa tomaría la decisión
+de compra? Yo creo que sería una decisión de compra que probablemente viene impulsada por el
+técnido, por el equipo de desarrollo directamente, no sea algún creante de operaciones o alguien que en el
+día de día sabe lo costoso en tiempo de recursos que puede ser estar dándole con una
+plataforma de datos, pero seguramente la decisión final de conocería del sitio o algún puesto directivo.
+Sobre todo, analizando o imaginando que a lo mejor hay un tema por volumen, cuando tienes
+bases de datos, grandes tantas bases de datos, con tantos volúmenes, hablé que analizar el tema de
+la licencia si funcionaría por base de datos, por usuarios, por tiempo de ejecución, pero en
+cualquier caso, porque sería una decisión en nivel de dirección de clientes. Claro, bueno, esas
+fueran tantas preguntas, muchas gracias por el tiempo, por toda la experiencia que nos aportaste.

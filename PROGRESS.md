@@ -113,15 +113,15 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ### Avances
 
-#### F8 — Entrevista 3: Raúl de la Breña (Tech Lead Backend, fintech)
+#### F8 — Entrevista 3: Raúl Zavaleta (Desarrollador fullstack / Ingeniero de software)
 - **Autor:** Diego. Rama `docs/F8-entrevista-raul`.
-- **Archivos:** `business/entrevista-3.md`, `interviews/Interview Raul de la Brena.txt` (transcripción local)
-- **Notas:** Entrevista de customer discovery. Hallazgos principales: 15-20 h/mes en optimización (el más alto de las 3), incidente crítico con NOT IN sobre 2M rows (D19) que bloqueó pagos en fintech, stack sofisticado (Grafana+Datadog) pero análisis de queries sigue manual, quiere CI linter + monitoreo proactivo, compliance fintech exige on-premise/self-hosted, tiene autoridad de compra hasta $500/mes y dijo que compraría sin pensarlo. Con F8, las 3 entrevistas de discovery (F6-F8) quedan cerradas.
+- **Archivos:** `business/entrevista-3.md`, `interviews/Interview Raul Zavaleta.txt` (transcripción whisper)
+- **Notas:** Entrevista de customer discovery. Hallazgos principales: 15-20 BDs activas, la más grande de 3 TB. Tiempo en optimización varía por ciclo de vida: 3-4 h/mes en producción estable, 16-20 h/mes en etapas tempranas. Caso crítico: tabla de embarques de 300-400 GB en sistema logístico transnacional, queries tardaban horas, resuelto con particionamiento manual + tablas temporales con COPY. Usa DBeaver Enterprise + pg_stat_statements + EXPLAIN ANALYZE (herramientas nativas, no SaaS). Distingue dos modos de uso: análisis de arquitectura y performance en tiempo real. Seguridad: conexión punto a punto, read-only indiscutible, datos efímeros. Cuestionó modelo de pricing por BD con 15-20 BDs. Con F8, las 3 entrevistas de discovery (F6-F8) quedan cerradas.
 
 #### F9 — Definición del problema con datos (actualizado con F8)
 - **Autor:** Diego. Rama `docs/F8-entrevista-raul`.
 - **Archivos:** `business/problema.md`, `business/CLAUDE.md`
-- **Notas:** F9 actualizado con datos de las 3 entrevistas. 8 de 9 hipótesis validadas (3/3), 1 parcial. Cuantificación del dolor actualizada: $25-1,000/equipo/mes. Correlación validada entre tamaño de BD y tiempo invertido (Carlos 1h→30GB, Jos 10h→1GB, Raúl 20h→120GB). Willingness to pay validada por Raúl ("lo compraría sin pensarlo" a $200/mes).
+- **Notas:** F9 actualizado con datos de las 3 entrevistas. 7 de 9 hipótesis validadas (3/3), 2 parciales. Cuantificación del dolor actualizada: $25-1,000/equipo/mes. Correlación validada entre escala y tiempo invertido (Carlos 1h→30GB, Jos 10h→1GB, Raúl 3-4h estable / 16-20h dev→3TB).
 - **Tests:** N/A (documentación)
 
 ---

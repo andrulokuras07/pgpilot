@@ -1,9 +1,9 @@
-# Entrevista 3 — Raúl de la Breña
+# Entrevista 3 — Raúl Zavaleta
 
-**Rol:** Tech Lead Backend (fintech)
+**Rol:** Desarrollador fullstack / Ingeniero de software
 **Fecha:** 13 de mayo de 2026
 **Formato:** Videollamada grabada
-**Duración:** ~12 minutos
+**Duración:** ~10 minutos
 
 ---
 
@@ -11,65 +11,70 @@
 
 ### 1. ¿Cuántas bases de datos Postgres manejas en producción y cuál es el tamaño aproximado de la más grande?
 
-Maneja 3 bases de datos Postgres en producción (más una MongoDB que no cuenta). La más grande es la de transacciones con ~120 GB y 45 tablas. Las otras dos son de 15 GB (usuarios) y 2 GB (configuración). No tienen DBA dedicado; él hace de todo.
+Ha trabajado con más de 100 bases de datos a lo largo de su carrera. Actualmente administra entre **15 y 20 bases de datos**. La más grande ronda los **3 TB** de datos.
 
 ### 2. Cuando te llega una queja de "la app está lenta", ¿cuáles son los primeros 3 pasos que das para diagnosticar si es un problema de queries?
 
-1. Revisar dashboards de latencia por endpoint en **Grafana** para identificar qué endpoint se tarda.
-2. Ir a **Datadog** y buscar el trace del request lento para ver qué query se ejecuta.
-3. Correr **EXPLAIN ANALYZE** en pgAdmin para ver el plan de ejecución. Si ve un Seq Scan en tabla grande, sabe que falta un índice.
+1. Realizar pruebas de **latencia y conectividad de red** para verificar si es un tema de base de datos o de arquitectura de red.
+2. Si la red funciona, determinar con el usuario si es un problema general (configuración de aplicación, front o backend) o específico de una sección/pantalla.
+3. Cuando el problema es una sección específica, analizar directamente en los **logs** qué está sucediendo con esa pantalla y a partir de ahí analizar la consulta directamente.
 
 ### 3. ¿Qué herramientas usas hoy para analizar queries lentas?
 
-- **Grafana** para dashboards de latencia.
-- **Datadog** para traces y logs.
-- **pgAdmin** para EXPLAIN ANALYZE manual.
-- **pg_stat_statements** para queries más lentos en general, pero lo revisa cada ~2 semanas sin automatización.
+- **DBeaver Enterprise** como IDE de base de datos (cliente principal).
+- **pg_stat_statements** para identificar queries problemáticos.
+- **EXPLAIN ANALYZE** para ver exactamente cuánto tiempo toma cada parte de un query.
 
-Tiene más herramientas que los otros entrevistados, pero el análisis de queries sigue siendo manual. No tiene alertas automáticas — si no revisa, no se entera hasta que un usuario se queja.
+Usa herramientas nativas de Postgres, no SaaS especializados.
 
 ### 4. ¿Cuánto tiempo al mes estimas que le dedicas a optimizar queries o investigar problemas de rendimiento?
 
-Entre **15 y 20 horas al mes**. Como no tienen DBA, todo le cae a él. Además revisa los queries de su equipo en los pull requests porque no todos saben leer un EXPLAIN. Siente que la mitad de su tiempo es de base de datos cuando debería estar haciendo otras cosas de tech lead.
+Varía según el ciclo de vida del software:
+- **En producción estable:** no más de **3-4 horas al mes**.
+- **En etapas tempranas (desarrollo, análisis, staging):** puede dedicarle entre **4 y 5 horas por semana** (16-20 h/mes).
 
 ### 5. ¿Puedes contarme un caso reciente donde una query lenta causó un problema real en producción?
 
-Un reporte de conciliación nocturno empezó a degradarse y un día bloqueó transacciones de pago — **incidente crítico en fintech**. El problema era un `NOT IN` sobre una subquery con 2 millones de registros (producto cartesiano). Lo cambiaron a `NOT EXISTS` con índice parcial: **de 45 minutos a 3 segundos**. El incidente costó 4 horas de madrugada + 2 horas de postmortem al día siguiente.
+Un sistema logístico para una empresa transnacional que centralizaba información de embarques. La tabla principal llegaba a **300-400 GB** de datos. Por más que tenían índices, las consultas podían tardar **horas** y era completamente no funcional.
+
+**Solución:** particionar la tabla físicamente en el disco y generar tablas de auditoría temporales. Cada mañana se ejecutaba un query con la función `COPY` de Postgres para clonar los embarques recientes a una tabla más pequeña (~300-400 MB, millones de registros). Funcionaba para el 90% de los casos (búsquedas de fechas recientes). Para históricos de 5-7+ años, el problema persistía.
 
 ### 6. Si existiera una herramienta que analiza automáticamente tus queries y te da el SQL corregido, ¿en qué parte de tu flujo de trabajo la usarías?
 
-Dos lugares:
-1. **En el CI** — como un linter de queries en los pull requests, que detecte Seq Scans e índices faltantes automáticamente.
-2. **En monitoreo de producción** — que revise queries existentes y avise cuáles se pueden optimizar, porque queries que funcionan bien con pocos datos se degradan conforme la tabla crece.
+Distingue dos tipos de análisis:
+1. **Análisis de arquitectura:** herramienta que detecte componentes mal armados (llaves foráneas incorrectas, índices no funcionales). Útil en la fase de diseño y arquitectura de la BD.
+2. **Análisis de performance en tiempo real:** herramienta que detecte degradación y proponga el fix directo. Útil en **cualquier momento del ciclo de vida** — desde staging temprano hasta producción para mantenimiento. Dijo que sería "maravillosa" si conforme crece la información pudiera indicar qué está fallando y dar la respuesta rápido.
 
 ### 7. ¿Qué te preocuparía de darle acceso a una herramienta así a tu base de datos de producción?
 
-- **Compliance financiero:** manejan datos regulados (financieros + personales). La herramienta debe ser read-only y NO extraer datos de tablas, solo estructura y planes de ejecución.
-- **Garantías:** certificación o garantía de que los datos del schema no se envían a servidores externos. Si usa IA, que sanitice todo antes de enviarlo.
-- **Ideal:** poder correrla on-premise, dentro de su propia infraestructura.
+Preguntó primero si la herramienta es de terceros o se instala on-premise. Asumiendo terceros:
+- **Seguridad de la conexión:** conexión punto a punto segura tanto para el proveedor como para la base de datos.
+- **Acceso de solo lectura:** indiscutiblemente, para una BD productiva con tanta información.
+- **Privacidad:** que su información no se analice de ninguna manera que comprometa su lógica de negocio.
+- **Tratamiento efímero:** que los datos se usen solo para el análisis y no se almacenen de ninguna manera.
 
 ### 8. ¿Tu equipo tiene algún proceso formal de code review para queries o migraciones antes de que lleguen a producción?
 
-Sí, proceso formal: todos los queries pasan por pull request. Él revisa personalmente todos los que tocan la base de datos. Usan **Flyway** para migraciones y tienen un ambiente de staging para probar antes de producción. La revisión de queries es manual y le consume mucha carga — una herramienta automatizada le quitaría trabajo.
+Tienen un proceso de code review y versionamiento integral y transversal para todas las áreas del software, pero **específicamente para queries, no**. No hay un paso dedicado a revisar la calidad de los queries antes de producción.
 
 ### 9. Si esta herramienta costara entre $50 y $200 USD/mes por base de datos, ¿quién en tu empresa tomaría la decisión de compra?
 
-Él como tech lead puede aprobar herramientas de **hasta $500 USD/mes sin pedir permiso**. Arriba de eso requiere CTO + finanzas. Dijo explícitamente: "200 dólares contra lo que me pagan por esas horas es nada, yo la compraría sin pensarlo."
+La decisión viene **impulsada por el equipo técnico** (gerente de operaciones o alguien del día a día que sabe lo costoso que es lidiar con problemas de BD), pero la **decisión final la toma el CTO o un puesto directivo**. Mencionó que con tantas BDs y volúmenes, habría que analizar si el modelo de licencia funciona por base de datos, por usuarios, o por tiempo de ejecución.
 
 ---
 
 ## Insights clave
 
-1. **15-20 h/mes — el dolor más alto de las 3 entrevistas.** Escala clara: Carlos (1 h/mes, DBA con equipo), Jos (10 h/mes, dev), Raúl (15-20 h/mes, tech lead sin DBA). El dolor crece cuando no hay DBA dedicado y el tech lead absorbe la responsabilidad.
+1. **Escala enterprise real: 15-20 BDs, 3 TB la más grande.** Es el entrevistado con más experiencia y escala. Su perspectiva valida que PgPilot tiene mercado en equipos que manejan volúmenes serios, no solo BDs pequeñas.
 
-2. **NOT IN como anti-pattern real con impacto crítico.** El caso de `NOT IN` sobre 2M registros es exactamente D19 (not_in_nullable_subquery) que PgPilot ya detecta. El fix (NOT EXISTS + índice parcial) tomó 4 horas de madrugada + postmortem. PgPilot lo habría detectado preventivamente.
+2. **Particionamiento como solución a queries lentos.** Su caso de la tabla de 300-400 GB con particionamiento manual y tablas temporales con `COPY` es un anti-pattern de complejidad que PgPilot podría detectar proactivamente (tabla sin particiones que crece sin control).
 
-3. **Primer entrevistado que compraría sin preguntar.** Tiene autoridad de compra hasta $500/mes. A $200/mes por BD, entra en su rango sin aprobación. Esto valida el tier Pro ($29/dev/mes) como accesible para tech leads con autonomía de compra.
+3. **Sin review formal específico para queries.** A pesar de tener procesos maduros de code review, NO tienen uno dedicado a queries. Esto confirma el gap que PgPilot llena: el code review cubre código pero nadie revisa si los queries son eficientes.
 
-4. **Monitoreo proactivo como segundo caso de uso.** Los otros dos entrevistados mencionaron CI/desarrollo. Raúl agrega monitoreo de producción: detectar degradación progresiva antes de que explote. Feature roadmap potencial.
+4. **Distingue dos modos de uso.** Fue el único que articuló claramente dos productos: (1) análisis de arquitectura/diseño y (2) monitoreo de performance en tiempo real. PgPilot cubre ambos parcialmente — detección estática + sandbox.
 
-5. **On-premise/self-hosted es requisito en fintech.** Confirma que el tier Enterprise con self-hosted Docker tiene mercado real. La sanitización de literales (R4) no es suficiente para fintech — quieren control total de la infraestructura.
+5. **Tratamiento efímero de datos como requisito.** No solo pide read-only y sanitización — quiere garantía de que los datos son efímeros y no se almacenan. Esto refuerza la propuesta de valor de R4 (sanitización) y valida que el modo offline/self-hosted es un diferenciador real.
 
-6. **El tech lead como cuello de botella.** Revisa todos los queries de 8 personas manualmente. PgPilot como linter de CI le descargaría la revisión de queries y le devolvería tiempo para tareas de tech lead.
+6. **Modelo de pricing cuestionado.** Fue el único que cuestionó si el pricing por BD es el correcto cuando tienes 15-20 BDs. Sugirió explorar modelos por usuarios o por tiempo de ejecución. Señal importante para el equipo de pricing.
 
-7. **Stack más sofisticado, mismo problema.** Tiene Grafana + Datadog + pg_stat_statements — mucho más que Carlos y Jos — pero el análisis de queries sigue siendo manual. Las herramientas de observabilidad no resuelven el problema de optimización.
+7. **El técnico impulsa, el directivo decide.** Patrón consistente con las otras entrevistas: el equipo técnico identifica la necesidad y la escala al CTO/directivo para aprobación de compra.

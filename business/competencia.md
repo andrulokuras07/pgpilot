@@ -97,7 +97,7 @@ Honestidad — la rúbrica del proyecto exige no afirmar superioridad en todas l
 - **EverSQL** cubre Postgres y MySQL. PgPilot solo Postgres en v1.
 - **DBtune** optimiza configuración del servidor (`shared_buffers`, `work_mem`) — área que PgPilot no toca y donde una mala configuración puede anular cualquier optimización de queries.
 - **pgMustard** cuesta 95 €/año/usuario. Es muy difícil competir en precio contra eso para un developer individual.
-- Ninguno de los competidores tiene mercado LATAM validado todavía, pero PgPilot tampoco aún a nivel comercial. Señal de las 3 entrevistas F6/F7/F8: los 3 entrevistados son LATAM y **ninguno** usa pganalyze, EverSQL ni DBtune (Carlos: Rapid7/CloudWatch; Jos: ninguna; Raúl: Grafana+Datadog+pgAdmin). La hipótesis del foco regional tiene señal cualitativa fuerte; falta validación comercial (paying customers post-Demo Day).
+- Ninguno de los competidores tiene mercado LATAM validado todavía, pero PgPilot tampoco aún a nivel comercial. Señal de las 3 entrevistas F6/F7/F8: los 3 entrevistados son LATAM y **ninguno** usa pganalyze, EverSQL ni DBtune (Carlos: Rapid7/CloudWatch; Jos: ninguna; Raúl: DBeaver Enterprise + pg_stat_statements + EXPLAIN ANALYZE). La hipótesis del foco regional tiene señal cualitativa fuerte; falta validación comercial (paying customers post-Demo Day).
 
 ---
 

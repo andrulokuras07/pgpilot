@@ -40,18 +40,18 @@ Maneja 2 bases de datos Postgres en producción (~500 MB a 1 GB cada una, ~20 ta
 | **Preocupación de seguridad** | Información confidencial de clientes. Prefiere NO dar acceso a producción. Quiere garantía de que no se guardan logs ni datos. Valora poder elegir a qué tablas dar acceso. |
 | **Decisor de compra** | Dual: líder de infraestructura (técnico) + gerente (aprobación de inversión). |
 
-**Entrevista 3 — Raúl de la Breña, Tech Lead Backend (fintech)**
-Maneja 3 bases de datos Postgres en producción (~120 GB la más grande, 45 tablas). No tiene DBA dedicado.
+**Entrevista 3 — Raúl Zavaleta, Desarrollador fullstack / Ingeniero de software**
+Administra 15-20 bases de datos Postgres actualmente. La más grande ronda los 3 TB. Ha trabajado con más de 100 BDs en su carrera.
 
 | Señal | Dato |
 |-------|------|
-| **Flujo de diagnóstico semi-estructurado** | Grafana (latencia por endpoint) → Datadog (traces) → EXPLAIN ANALYZE en pgAdmin. Usa pg_stat_statements cada ~2 semanas. Sin alertas automáticas. |
-| **Tiempo invertido** | 15-20 horas/mes. El más alto de las 3 entrevistas. Absorbe toda la responsabilidad de BD por falta de DBA dedicado. |
-| **Anti-pattern real sufrido** | `NOT IN` sobre subquery de 2M registros bloqueó transacciones de pago (incidente fintech crítico). Fix: `NOT EXISTS` + índice parcial, de 45 min → 3 seg. Costo: 4h de madrugada + 2h postmortem. |
-| **Herramientas parciales** | Grafana + Datadog + pgAdmin + pg_stat_statements. Stack más sofisticado que los otros entrevistados, pero el análisis de queries sigue siendo manual. |
-| **Punto de integración deseado** | Dual: (1) CI/linter en pull requests, (2) monitoreo proactivo de producción para detectar degradación progresiva. |
-| **Preocupación de seguridad** | Compliance fintech: read-only + no extraer datos de tablas + sanitización antes de IA + idealmente on-premise/self-hosted. |
-| **Decisor de compra** | Él mismo (tech lead) puede aprobar hasta $500/mes sin CTO. Dijo: "200 dólares contra lo que me pagan por esas horas es nada, yo la compraría sin pensarlo." |
+| **Flujo de diagnóstico estructurado** | Latencia/conectividad de red → determinar si es problema general o de sección específica → analizar logs de la pantalla afectada → analizar la consulta directamente. |
+| **Tiempo invertido** | 3-4 horas/mes en producción estable. 16-20 horas/mes en etapas tempranas (desarrollo/staging). Varía según el ciclo de vida del software. |
+| **Anti-pattern real sufrido** | Tabla de embarques de 300-400 GB en sistema logístico transnacional. Queries tardaban horas. Solución: particionamiento manual + tablas temporales con `COPY` de Postgres. Funcionaba al 90% (fechas recientes); históricos seguían lentos. |
+| **Herramientas nativas** | DBeaver Enterprise + pg_stat_statements + EXPLAIN ANALYZE. No usa SaaS especializados. |
+| **Punto de integración deseado** | Dos modos: (1) análisis de arquitectura en diseño (llaves, índices), (2) análisis de performance en tiempo real en cualquier etapa del ciclo de vida. Dijo que sería "maravillosa". |
+| **Preocupación de seguridad** | Conexión punto a punto segura, acceso read-only indiscutible, privacidad de lógica de negocio, tratamiento efímero de datos (no almacenar nada). |
+| **Decisor de compra** | Impulsada por el equipo técnico, decisión final del CTO/directivo. Cuestionó el modelo por BD — con 15-20 BDs sugiere explorar pricing por usuarios o por tiempo de ejecución. |
 
 ### 2.2 Datos secundarios (fuentes públicas)
 
@@ -150,15 +150,15 @@ A $29 USD/dev/mes (tier Pro), un equipo de 5 devs paga $145/mes. Si PgPilot ahor
 
 | Hipótesis | Estado | Evidencia |
 |-----------|--------|-----------|
-| Los equipos diagnostican queries de forma manual y reactiva | ✅ Validada (3/3) | Carlos: "actuamos por eventos". Jos: proceso manual, una semana para un fix. Raúl: 15-20 h/mes de diagnóstico manual pese a tener Grafana+Datadog. |
-| Los anti-patterns comunes causan dolor real | ✅ Validada (3/3) | Carlos: SELECT * (D9). Jos: JOINs sin índices (D16). Raúl: NOT IN sobre 2M rows (D19), incidente crítico fintech. |
-| No usan herramientas especializadas de Postgres | ✅ Validada (3/3) | Carlos: Rapid7/CloudWatch + EXPLAIN. Jos: ninguna. Raúl: Grafana+Datadog+pgAdmin (observabilidad sí, optimización de queries no). |
-| La integración ideal es en desarrollo/CI | ✅ Validada (3/3) | Carlos: pull request/CI/CD. Jos: fase de desarrollo/staging. Raúl: CI como linter + monitoreo proactivo de producción. |
-| Seguridad y privacidad de datos es prioridad | ✅ Validada (3/3) | Carlos: read-only innegociable. Jos: no dar acceso a producción, no guardar logs. Raúl: compliance fintech, sanitización de IA, idealmente on-premise. |
-| El decisor de compra NO es solo el dev individual | ✅ Validada (3/3) | Carlos: CTO. Jos: líder infra + gerente. Raúl: él mismo aprueba hasta $500/mes (tech lead con autonomía). |
-| Willingness to pay de $29/dev/mes en LATAM | ✅ Validada (1/3) | Raúl: "200 dólares contra lo que me pagan por esas horas es nada, yo la compraría sin pensarlo." Carlos y Jos no expresaron objeción al rango $50-200/BD. |
-| El dolor crece con el tamaño de la BD | ✅ Validada (3/3) | Carlos: migración →30 GB. Jos: 500 MB-1 GB, 10 h/mes. Raúl: 120 GB, 15-20 h/mes. Correlación clara entre tamaño y tiempo invertido. |
-| Los equipos adoptarían PgPilot sin LLM (modo offline) | 🟡 Parcial (1/3) | Raúl quiere on-premise (valida self-hosted). Jos prefiere staging (valida indirectamente). No se preguntó explícitamente en ninguna. |
+| Los equipos diagnostican queries de forma manual y reactiva | ✅ Validada (3/3) | Carlos: "actuamos por eventos". Jos: proceso manual, una semana para un fix. Raúl: diagnóstico manual con DBeaver + EXPLAIN ANALYZE, 16-20 h/mes en etapas tempranas. |
+| Los anti-patterns comunes causan dolor real | ✅ Validada (3/3) | Carlos: SELECT * (D9). Jos: JOINs sin índices (D16). Raúl: tabla de 300-400 GB sin particiones, queries tardaban horas en sistema logístico transnacional. |
+| No usan herramientas especializadas de Postgres | ✅ Validada (3/3) | Carlos: Rapid7/CloudWatch + EXPLAIN. Jos: ninguna. Raúl: DBeaver Enterprise + pg_stat_statements + EXPLAIN ANALYZE (herramientas nativas, no SaaS). |
+| La integración ideal es en desarrollo/CI | ✅ Validada (3/3) | Carlos: pull request/CI/CD. Jos: fase de desarrollo/staging. Raúl: análisis de arquitectura en diseño + performance en tiempo real en cualquier etapa. |
+| Seguridad y privacidad de datos es prioridad | ✅ Validada (3/3) | Carlos: read-only innegociable. Jos: no dar acceso a producción, no guardar logs. Raúl: conexión punto a punto, read-only indiscutible, datos efímeros, privacidad de lógica de negocio. |
+| El decisor de compra NO es solo el dev individual | ✅ Validada (3/3) | Carlos: CTO. Jos: líder infra + gerente. Raúl: equipo técnico impulsa, CTO/directivo decide. |
+| Willingness to pay de $29/dev/mes en LATAM | 🟡 Parcial (1/3) | Carlos y Jos no expresaron objeción al rango $50-200/BD. Raúl cuestionó el modelo por BD con 15-20 BDs — sugiere por usuarios o por tiempo de ejecución. |
+| El dolor crece con el tamaño de la BD | ✅ Validada (3/3) | Carlos: migración →30 GB, 1 h/mes. Jos: 500 MB-1 GB, 10 h/mes. Raúl: 3 TB, 3-4 h/mes estable pero 16-20 h/mes en desarrollo. Correlación clara entre escala y tiempo invertido. |
+| Los equipos adoptarían PgPilot sin LLM (modo offline) | 🟡 Parcial (1/3) | Raúl preguntó si es on-premise o de terceros (valida interés en self-hosted). Jos prefiere staging (valida indirectamente). No se preguntó explícitamente en ninguna. |
 
 ---
 

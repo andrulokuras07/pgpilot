@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "WebSearch",
+      "WebFetch(domain:www.dbtune.com)",
+      "Bash(powershell *)",
+      "Bash(python -c \"import sys; sys.stdout.reconfigure\\(encoding='utf-8'\\); from docx import Document; doc = Document\\('4.- Plantillas_Entrega.docx'\\); [print\\(p.text\\) for p in doc.paragraphs]\")",
+      "Read(//tmp/**)",
+      "Bash(docker compose ps *)",
+      "Bash(Test-NetConnection *)",
+      "PowerShell(Test-NetConnection *)",
+      "Bash(findstr entrevista *)",
+      "Bash(git -C \"C:\\\\Users\\\\AlexR\\\\Documents\\\\Semestre_6\\\\Bases de Datos\\\\Final\\\\pgpilot\" status)",
+      "Bash(git -C \"C:\\\\Users\\\\AlexR\\\\Documents\\\\Semestre_6\\\\Bases de Datos\\\\Final\\\\pgpilot\" log --oneline -5)",
+      "Bash(git *)",
+      "Bash(findstr docx *)"
+    ]
+  }
+}

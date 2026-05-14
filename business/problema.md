@@ -40,6 +40,19 @@ Maneja 2 bases de datos Postgres en producción (~500 MB a 1 GB cada una, ~20 ta
 | **Preocupación de seguridad** | Información confidencial de clientes. Prefiere NO dar acceso a producción. Quiere garantía de que no se guardan logs ni datos. Valora poder elegir a qué tablas dar acceso. |
 | **Decisor de compra** | Dual: líder de infraestructura (técnico) + gerente (aprobación de inversión). |
 
+**Entrevista 3 — Raúl de la Breña, Tech Lead Backend (fintech)**
+Maneja 3 bases de datos Postgres en producción (~120 GB la más grande, 45 tablas). No tiene DBA dedicado.
+
+| Señal | Dato |
+|-------|------|
+| **Flujo de diagnóstico semi-estructurado** | Grafana (latencia por endpoint) → Datadog (traces) → EXPLAIN ANALYZE en pgAdmin. Usa pg_stat_statements cada ~2 semanas. Sin alertas automáticas. |
+| **Tiempo invertido** | 15-20 horas/mes. El más alto de las 3 entrevistas. Absorbe toda la responsabilidad de BD por falta de DBA dedicado. |
+| **Anti-pattern real sufrido** | `NOT IN` sobre subquery de 2M registros bloqueó transacciones de pago (incidente fintech crítico). Fix: `NOT EXISTS` + índice parcial, de 45 min → 3 seg. Costo: 4h de madrugada + 2h postmortem. |
+| **Herramientas parciales** | Grafana + Datadog + pgAdmin + pg_stat_statements. Stack más sofisticado que los otros entrevistados, pero el análisis de queries sigue siendo manual. |
+| **Punto de integración deseado** | Dual: (1) CI/linter en pull requests, (2) monitoreo proactivo de producción para detectar degradación progresiva. |
+| **Preocupación de seguridad** | Compliance fintech: read-only + no extraer datos de tablas + sanitización antes de IA + idealmente on-premise/self-hosted. |
+| **Decisor de compra** | Él mismo (tech lead) puede aprobar hasta $500/mes sin CTO. Dijo: "200 dólares contra lo que me pagan por esas horas es nada, yo la compraría sin pensarlo." |
+
 ### 2.2 Datos secundarios (fuentes públicas)
 
 | Fuente | Dato relevante |
@@ -122,9 +135,9 @@ Basado en las entrevistas y el análisis de mercado (F12):
 
 | Concepto | Estimación conservadora | Fuente |
 |----------|------------------------|--------|
-| Tiempo de DBA/dev en diagnóstico reactivo | 1-10 horas/mes | Carlos: 0.5-1 h/mes. Jos: ~10 h/mes. Percona survey: equipos grandes reportan hasta 2 días/mes. |
+| Tiempo de DBA/dev en diagnóstico reactivo | 1-20 horas/mes | Carlos: 0.5-1 h/mes. Jos: ~10 h/mes. Raúl: 15-20 h/mes. Percona survey: equipos grandes reportan hasta 2 días/mes. |
 | Costo de hora de dev backend LATAM | $25-50 USD/hora | Glassdoor, Levels.fyi (ajustado LATAM) |
-| Costo mensual estimado del problema | $25-500 USD/equipo/mes | Solo tiempo directo. Jos: 10 h × $25-50 = $250-500/mes. No incluye costo de incidentes, downtime, o deuda técnica acumulada. |
+| Costo mensual estimado del problema | $25-1,000 USD/equipo/mes | Solo tiempo directo. Raúl: 20 h × $25-50 = $500-1,000/mes. No incluye costo de incidentes, downtime, o deuda técnica acumulada. |
 | Costo de un incidente de producción por query lenta | $500-5,000 USD | Estimación basada en downtime reportado en la industria (fuente: Gartner cost-of-downtime benchmarks) |
 
 ### ROI de PgPilot
@@ -137,15 +150,15 @@ A $29 USD/dev/mes (tier Pro), un equipo de 5 devs paga $145/mes. Si PgPilot ahor
 
 | Hipótesis | Estado | Evidencia |
 |-----------|--------|-----------|
-| Los equipos diagnostican queries de forma manual y reactiva | ✅ Validada (2/2) | Carlos: "actuamos por eventos", flujo manual. Jos: proceso manual sin herramientas, una semana para resolver un query lento. |
-| Los anti-patterns comunes causan dolor real | ✅ Validada (2/2) | Carlos: SELECT * (D9). Jos: JOINs sin índices (D16) + producto cartesiano. Ambos los resolvieron manualmente. |
-| No usan herramientas especializadas de Postgres | ✅ Validada (2/2) | Carlos: solo Rapid7/CloudWatch + EXPLAIN. Jos: ninguna herramienta especializada. |
-| La integración ideal es en desarrollo/CI | ✅ Validada (2/2) | Carlos: pull request/CI/CD. Jos: fase de desarrollo, ambientes de staging. |
-| Seguridad y privacidad de datos es prioridad | ✅ Validada (2/2) | Carlos: read-only innegociable. Jos: no dar acceso a producción, garantía de no guardar logs/datos, control granular por tabla. |
-| El decisor de compra NO es el dev individual | ✅ Validada (2/2) | Carlos: CTO. Jos: líder de infraestructura + gerente. |
-| Willingness to pay de $29/dev/mes en LATAM | ⬜ Pendiente | Ninguno expresó objeción al rango $50-200/BD, pero no se validó precio específico por dev. |
-| El dolor crece con el tamaño de la BD | ⬜ Pendiente | Carlos en migración (→30 GB). Jos con BDs chicas (500 MB-1 GB) pero ya invierte 10 h/mes. |
-| Los equipos adoptarían PgPilot sin LLM (modo offline) | ⬜ Pendiente | Jos prefiere ambientes previos sobre producción — valida indirectamente el modo offline/bundle. No se preguntó explícitamente. |
+| Los equipos diagnostican queries de forma manual y reactiva | ✅ Validada (3/3) | Carlos: "actuamos por eventos". Jos: proceso manual, una semana para un fix. Raúl: 15-20 h/mes de diagnóstico manual pese a tener Grafana+Datadog. |
+| Los anti-patterns comunes causan dolor real | ✅ Validada (3/3) | Carlos: SELECT * (D9). Jos: JOINs sin índices (D16). Raúl: NOT IN sobre 2M rows (D19), incidente crítico fintech. |
+| No usan herramientas especializadas de Postgres | ✅ Validada (3/3) | Carlos: Rapid7/CloudWatch + EXPLAIN. Jos: ninguna. Raúl: Grafana+Datadog+pgAdmin (observabilidad sí, optimización de queries no). |
+| La integración ideal es en desarrollo/CI | ✅ Validada (3/3) | Carlos: pull request/CI/CD. Jos: fase de desarrollo/staging. Raúl: CI como linter + monitoreo proactivo de producción. |
+| Seguridad y privacidad de datos es prioridad | ✅ Validada (3/3) | Carlos: read-only innegociable. Jos: no dar acceso a producción, no guardar logs. Raúl: compliance fintech, sanitización de IA, idealmente on-premise. |
+| El decisor de compra NO es solo el dev individual | ✅ Validada (3/3) | Carlos: CTO. Jos: líder infra + gerente. Raúl: él mismo aprueba hasta $500/mes (tech lead con autonomía). |
+| Willingness to pay de $29/dev/mes en LATAM | ✅ Validada (1/3) | Raúl: "200 dólares contra lo que me pagan por esas horas es nada, yo la compraría sin pensarlo." Carlos y Jos no expresaron objeción al rango $50-200/BD. |
+| El dolor crece con el tamaño de la BD | ✅ Validada (3/3) | Carlos: migración →30 GB. Jos: 500 MB-1 GB, 10 h/mes. Raúl: 120 GB, 15-20 h/mes. Correlación clara entre tamaño y tiempo invertido. |
+| Los equipos adoptarían PgPilot sin LLM (modo offline) | 🟡 Parcial (1/3) | Raúl quiere on-premise (valida self-hosted). Jos prefiere staging (valida indirectamente). No se preguntó explícitamente en ninguna. |
 
 ---
 

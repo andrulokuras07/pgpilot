@@ -37,7 +37,7 @@
 
 **Diferenciador.** **Integridad arquitectónica de 4 defensores combinados** que un competidor no replica en 90 días sin rehacer su producto: motor determinístico + sanitización fuerte + validación en sandbox + modo offline. Foco LATAM (idioma, horario, network) como defensa comercial transversal.
 
-**Equipo.** 5 estudiantes de Ingeniería en Sistemas Computacionales, Universidad Anáhuac Querétaro. Producto construido un semestre con metodología disciplinada (motor revisado por humanos, capa IA con guardrails) — el mismo método que permite venderlo como producto controlado.
+**Equipo.** 6 estudiantes de Ingeniería en Sistemas Computacionales, Universidad Anáhuac Querétaro. Producto construido un semestre con metodología disciplinada (motor revisado por humanos, capa IA con guardrails) — el mismo método que permite venderlo como producto controlado.
 
 **Ask.** Académico (Demo Day 14-may-2026): validación del modelo y guardrails frente al jurado. Comercial post-Demo: introducciones a 5-10 CTOs/tech leads LATAM (fintech/healthtech/SaaS) para pilotos gratuitos de 90 días + mentoría founder-led-sales LATAM.
 
@@ -361,23 +361,22 @@ Con 10 clientes y ~$80 K ARR (cierre mes 12): **(1)** inbound dominante (catálo
 
 ## 10. Por qué nuestro equipo
 
-[PENDIENTE: COMPLETAR DATOS DEL EQUIPO con nombres, matrículas, áreas de trabajo y experiencia relevante de los 5 miembros antes de la entrega final.]
+Equipo de 6 estudiantes de Ingeniería en Sistemas Computacionales, Universidad Anáhuac Querétaro, materia SIS2404 — Bases de Datos Avanzadas. Construimos PgPilot durante un semestre con metodología disciplinada: motor determinístico revisado por humanos, capa de IA encapsulada con guardrails (sanitización + cross-validation + fallback a plantillas), decisiones de arquitectura tomadas por el equipo con bitácora versionada en `docs/decisiones.md` y `PROGRESS.md`.
 
-Equipo de 5 estudiantes de Ingeniería en Sistemas Computacionales, Universidad Anáhuac Querétaro, semestre 6, materia SIS2404 — Bases de Datos Avanzadas. Construimos PgPilot durante un semestre con metodología disciplinada: motor determinístico revisado por humanos, capa de IA encapsulada con guardrails (sanitización + cross-validation + fallback a plantillas), decisiones de arquitectura tomadas por el equipo con bitácora de decisiones versionada en `docs/decisiones.md` y `PROGRESS.md`.
+**Integrantes y reparto técnico real** (basado en autores de los commits en `git shortlog -sn`):
 
-**Reparto técnico real** (basado en autores de los commits en `git shortlog`; nombres a confirmar):
+| Integrante | Matrícula | Área principal | Componentes implementados |
+|---|---|---|---|
+| Andrés Angulo | 00508857 | Backend + orquestador + infraestructura | Repo y estructura, Docker Compose (AppDB :5434 + sandbox :5435), pool read-only con timeout, extractor de schema vía `pg_catalog` y de tamaños de tabla con categorización, parser EXPLAIN JSON con `PlanNode` (16+ tipos de nodo), helper `find_nodes` (DFS pre-order), detectores **D2 (Nested Loop con outer grande), D9 (SELECT *), D20 (índice cubriente) y D22 (count(*) sin WHERE)**, recomendador con filtro de selectividad (umbral 20%), validador en sandbox por cambio de tipo de nodo (Seq Scan → Index Scan), scaffold frontend (Vite + React + Monaco), backend FastAPI `/analyze`, wiring backend↔frontend (B14), scripts de medición empírica de cobertura. |
+| Alexander Riggs | 00509910 | Conector + sandbox + negocio | Extractor de stats por columna (`pg_stats` con `n_distinct`, `null_frac`, `most_common_vals`, `correlation`), cache de metadata con fingerprint MD5 y detección de drift por content hash, modo offline con bundle JSON portable (`export_bundle`/`load_bundle`/`validate_bundle`), sandbox Postgres efímero con `pg_restore_relation_stats` (PG18+), pool de sandbox separado, orquestación `explain_in_sandbox` con cleanup `try/finally`. Investigación competitiva (F3, 4 competidores), modelo de pricing per-seat 4 tiers (F11), TAM/SAM/SOM con metodología razonada (F12, $800M / $34M / $850K), plan go-to-market founder-led + content-driven (F13, Show HN + Nerdearla + Finnosummit), **diferenciador defendible (F14) con marco "el competidor real es ChatGPT"**, documento de negocio consolidado (F15, .docx preservando plantilla del profesor). |
+| Diego Núñez | 00516279 | Detectores estructurales + workload | Detectores D3 (LIKE wildcard inicio), D4 (función no-immutable), D5 (OR cruzando tablas), D7 (subquery correlacionada). Parser `pg_stat_statements` con heurística JSON/CSV, scoring por `total_exec_time`, endpoint `POST /workload` con multipart, tab "Workload Analysis" en frontend, cleanup de schemas zombies, timeouts duros en sandbox, fix del orquestador `/analyze` para que los 18 detectores corran. Lista de candidatos a entrevistar (F4) y guion de 9 preguntas (F5). |
+| Regina Valenzuela | 00508321 | Capa IA (sanitización) + detectores índices | Sanitizador de literales con 5 tipos de placeholders ($LITERAL_<tipo>_<i>), test de privacidad con `grep` externo (email + RFC + tarjeta de prueba). Detectores D16 (índice faltante, el más rentable: 7 queries), D11 (índice parcial bool), D17 (cardinalidad JOIN → `CREATE STATISTICS`), D19 (`NOT IN` nullable → bug silencioso). Refactor `motor/detectors/_common.py`. README bilingüe del repo (macOS + WSL2 + Windows con troubleshooting). Documento de arquitectura consolidado. User persona Andrés Villanueva (F10). |
+| Emilio Tolosa | 00520630 | Documentación externa + validación en frontend | Docs externas de `/conector` (garantías read-only contractuales), `/motor` (pipeline + tabla de los 19 detectores con confianzas verificadas), `/ia` (system-prompt + Pydantic + cruz-validador + modo "LLM apagado", crítica para Q&A), `/sandbox` (R6 "no se copian datos" + tabla "qué sí/qué no se falsea"). Indicadores de validación R3 en frontend (helper `_compute_validations` + componente `ValidationIndicators` con 4 píldoras: schema_ok, no_duplicate_index, syntax_valid, sandbox_improves). Auditoría final del catálogo de 19 patterns. Índice maestro `docs/README.md`. |
+| David Ramírez | 00492597 | Detectores SQL + capa de validación IA | Detectores D12 (cast implícito que invalida btree), D14 (CTE materializada innecesaria), D18 (HAVING → WHERE), D8 (IN → EXISTS dual plan+SQL). Capa `/ia`: validador Pydantic con reintentos (rechazo de JSON malformado, `explanation` vacío, `confidence` fuera de rango), cross-validator de identificadores contra schema (descarta índice duplicado, columna inexistente, SQL no parseable), plantillas determinísticas con confianza ajustable por selectividad, orquestador `explain_recommendation` con fallback a plantilla ante cualquier excepción del LLM (garantiza R5). |
 
-| Área | Responsable principal | Componentes |
-|---|---|---|
-| Backend + orquestador | [PENDIENTE] | `/backend`, endpoint `/analyze`, aislamiento de errores |
-| Motor determinístico | [PENDIENTE] | `/motor`, parser EXPLAIN, 19 detectores, recomendador |
-| Capa de IA | [PENDIENTE] | `/ia`, sanitizador, prompt al LLM, validación cruzada |
-| Conector + sandbox | [PENDIENTE] | `/conector`, `/sandbox`, modo offline, validación de recomendaciones |
-| Frontend | [PENDIENTE] | `/frontend`, editor Monaco, tarjetas, comparativo before/after |
-| Workload + tests | [PENDIENTE] | `/workload`, parser `pg_stat_statements`, suite de coverage |
-| Documentación + negocio | [PENDIENTE] | `/docs`, `/business`, plantillas de entrega |
+**Por qué este equipo es el adecuado:** (1) **conocemos el mercado** — developers LATAM en formación; el persona Andrés Villanueva es una versión adulta de nosotros; (2) **disciplina arquitectónica demostrada** — la regla R1 ("motor decide, LLM explica, sandbox valida") está codificada en `RULES.md` y verificada en tests automatizados, no es slide de pitch; (3) **honestidad declarada** — el documento marca explícitamente qué hipótesis siguen abiertas tras las 3 entrevistas; (4) **bitácora versionada** — 3,000+ líneas de `PROGRESS.md` al cierre del semestre, trazabilidad que no se improvisa.
 
-**Por qué este equipo es el adecuado:** (1) **conocemos el mercado** — developers LATAM en formación; el persona Andrés es una versión adulta de nosotros; (2) **disciplina arquitectónica demostrada** — la regla R1 ("motor decide, LLM explica, sandbox valida") está codificada en `RULES.md` y verificada en tests automatizados, no es slide de pitch; (3) **honestidad declarada** — el documento marca explícitamente qué hipótesis siguen abiertas tras las 3 entrevistas (modo offline sin LLM no preguntado, validación comercial pendiente); (4) **bitácora versionada** — 3,000+ líneas de `PROGRESS.md` al cierre del semestre, trazabilidad que no se improvisa.
+**Sobre el tamaño del equipo (6 personas).** La rúbrica oficial calibra para equipos de 5. Trabajamos como 6 con el conocimiento del profesor: el alumno adicional asumió las áreas de documentación externa y validación en frontend que de otro modo habrían quedado descubiertas. El reparto arriba demuestra contribuciones independientes y simétricas — no hay polizones; cada miembro defiende componentes específicos en el Q&A.
 
 ---
 
@@ -399,8 +398,6 @@ Si el proyecto continúa post-Demo Day como producto comercial:
 **Académico (Demo Day, 14-may-2026):** validación del modelo de detección y guardrails frente al jurado y equipos rivales (PgGuardian, PgVault) — defensas a "¿cómo evitan alucinaciones?", "¿qué pasa si su LLM se cae?", "¿por qué pagar vs ChatGPT?" en `business/qa-prep.md` (F19) y verificables en código (R1, R3, R4, R6, R7). Crédito justo por la disciplina arquitectónica codificada y testeada.
 
 **Comercial (post-Demo, si el equipo decide continuar):** introducciones a 5-10 CTOs/tech leads LATAM en fintech, healthtech y SaaS B2B para pilotos gratuitos de 90 días (profesores de la materia, ex-alumnos en industria, programa de Innovación y Emprendimiento Anáhuac); mentoría en founder-led-sales LATAM (ciclo de procurement mexicano, eventos que sí valen sponsor); espacio de validación verano 2026 para el plan Q1 (Show HN + outreach + primer pilot) antes de la decisión definitiva del equipo.
-
-**Evaluación rúbrica:** Criterio 1.2 técnico (`docs/arquitectura.md` F2, 7 decisiones con alternativas) · 2.1 cobertura (18/20 AppDB v1, 0/10 FP, test de bloqueo en CI) · 2.2 resiliencia (modo "LLM apagado" validado en E8) · 3 producto y negocio (este doc + F3/F11/F12/F13/F14) · 1.2 declaración de IA (README §11 + `arquitectura.md` §8 + este doc).
 
 ---
 

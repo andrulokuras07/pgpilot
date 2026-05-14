@@ -109,6 +109,23 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 
 ---
 
+## 2026-05-13 (F8 — entrevista 3 + F9 actualizado)
+
+### Avances
+
+#### F8 — Entrevista 3: Raúl de la Breña (Tech Lead Backend, fintech)
+- **Autor:** Diego. Rama `docs/F8-entrevista-raul`.
+- **Archivos:** `business/entrevista-3.md`, `interviews/Interview Raul de la Brena.txt` (transcripción local)
+- **Notas:** Entrevista de customer discovery. Hallazgos principales: 15-20 h/mes en optimización (el más alto de las 3), incidente crítico con NOT IN sobre 2M rows (D19) que bloqueó pagos en fintech, stack sofisticado (Grafana+Datadog) pero análisis de queries sigue manual, quiere CI linter + monitoreo proactivo, compliance fintech exige on-premise/self-hosted, tiene autoridad de compra hasta $500/mes y dijo que compraría sin pensarlo. Con F8, las 3 entrevistas de discovery (F6-F8) quedan cerradas.
+
+#### F9 — Definición del problema con datos (actualizado con F8)
+- **Autor:** Diego. Rama `docs/F8-entrevista-raul`.
+- **Archivos:** `business/problema.md`, `business/CLAUDE.md`
+- **Notas:** F9 actualizado con datos de las 3 entrevistas. 8 de 9 hipótesis validadas (3/3), 1 parcial. Cuantificación del dolor actualizada: $25-1,000/equipo/mes. Correlación validada entre tamaño de BD y tiempo invertido (Carlos 1h→30GB, Jos 10h→1GB, Raúl 20h→120GB). Willingness to pay validada por Raúl ("lo compraría sin pensarlo" a $200/mes).
+- **Tests:** N/A (documentación)
+
+---
+
 
 ## 2026-05-13 (F6 + F7 + F9)
 

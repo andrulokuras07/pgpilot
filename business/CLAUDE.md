@@ -13,7 +13,7 @@ Documentos de discovery, validación de mercado y preparación para el Demo Day.
 - ✅ F5 — Guion de entrevista (`guion-entrevistas.md`)
 - ✅ F6 — Entrevista 1: Carlos Orellán, DBA (`entrevista-1.md`)
 - ✅ F7 — Entrevista 2: Jos Lugo, Ingeniero de software (`entrevista-2.md`)
-- ⬜ F8 — Entrevista 3 pendiente
+- ✅ F8 — Entrevista 3: Raúl de la Breña, Tech Lead Backend (`entrevista-3.md`)
 - ✅ F9 — Definición de problema con datos (`problema.md`)
 - ✅ F10 — User persona detallado (`persona.md`)
 - ✅ F11 — Modelo de pricing (`pricing.md` + `.docx`)
@@ -35,6 +35,7 @@ business/
 ├── guion-entrevistas.md     # F5 — 9 preguntas para entrevistas de discovery
 ├── entrevista-1.md          # F6 — Entrevista Carlos Orellán (DBA)
 ├── entrevista-2.md          # F7 — Entrevista Jos Lugo (Ing. software)
+├── entrevista-3.md          # F8 — Entrevista Raúl de la Breña (Tech Lead)
 ├── problema.md              # F9 — Definición del problema con datos
 ├── persona.md               # F10 — User persona detallado
 ├── pricing.md / .docx       # F11 — modelo de pricing (4 tiers)

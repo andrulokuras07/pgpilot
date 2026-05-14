@@ -33,7 +33,7 @@ PgPilot adopta un modelo **per-seat (por developer)** en lugar de **per-server**
 Para validar que los precios cubren costos y dejan margen:
 
 - **Costo variable por análisis (tier Pro):** API Anthropic Claude ~$0.02 promedio por análisis (sanitizer + prompt estructurado + validación cruzada, < 4 KB de tokens), sandbox Postgres efímero ~$0.001 por análisis (CPU + RAM por <30 s), infra fija prorrateada ~$0.005. Total ~$0.026 por análisis.
-- **Uso promedio estimado por developer Pro:** 30 análisis/mes (basado en hipótesis de F4-F8, validar en entrevistas). Costo variable mensual ≈ $0.78/dev.
+- **Uso promedio estimado por developer Pro:** 30 análisis/mes (hipótesis original del backlog F4-F8). Las 3 entrevistas no se pidió cuantificar análisis/mes; sí se cuantificó tiempo invertido (1 / 10 / 15-20 h/mes), del que se infiere que 30 análisis/mes es razonable como cota media. Validar con uso real en pilotos. Costo variable mensual ≈ $0.78/dev.
 - **Margen bruto Pro:** $29 - $0.78 = $28.22 ≈ 97% gross margin. Hay espacio amplio para usuarios power que ejecuten 200 análisis/mes (costo ~$5.20, margen aún 82%).
 - **Punto de equilibrio Free:** sin LLM, sin sandbox cloud, sin histórico. Costo variable estructural cercano a cero. Free no canibaliza Pro porque el valor diferencial (LLM, workload, histórico) es el motor de la conversión.
 
@@ -59,8 +59,8 @@ Para validar que los precios cubren costos y dejan margen:
 ## 6. Riesgos del modelo
 
 - **Riesgo: anclaje pganalyze.** Si el evaluador (o cliente potencial) tiene en mente el pricing per-server de pganalyze, $29/dev suena caro hasta que se multiplica por developers. Mitigación: la tabla del pitch debe mostrar comparación a paridad real (ej: empresa con 10 devs + 5 servidores Postgres: pganalyze Scale ~$499/mes vs PgPilot Pro 10×$29 = $290/mes).
-- **Riesgo: free tier ataca conversión.** Si Free incluye demasiado, el upgrade a Pro nunca llega. Mitigación: LLM y workload están detrás del paywall — son los dos features que motivan a pagar según hipótesis de F4-F8.
-- **Riesgo: validación de pricing.** Estos precios no han sido validados con paying customers todavía. F6-F8 (entrevistas) tienen que probar el rango — específicamente la pregunta del backlog "¿pagarías $29 USD/mes por una herramienta que te recomiende índices y reescriba queries?". Si la respuesta moda en LATAM es "no, $15", reajustar Pro a $19 manteniendo Team y Enterprise.
+- **Riesgo: free tier ataca conversión.** Si Free incluye demasiado, el upgrade a Pro nunca llega. Mitigación: LLM y workload están detrás del paywall — son los dos features que motivan a pagar (hipótesis del backlog F4-F8; las 3 entrevistas reforzaron que el dolor está en "no tengo herramienta", no en "necesito mejor UX gratis").
+- **Riesgo: validación de pricing.** Estos precios no han sido probados con paying customers todavía (la prueba real es post-Demo Day). Señales de las 3 entrevistas: Raúl (F8, tech lead fintech) validó explícitamente $200/mes — *"yo la compraría sin pensarlo"* — y declaró autonomía de compra hasta $500/mes; Carlos (F6) y Jos (F7) no objetaron el rango $50-200/BD aunque no se les preguntó precio per-dev exacto. **Decisión:** mantener Pro $29 y Team $49. El plan B "$19" queda como contingencia para casos sin autonomía de compra del dev.
 - **Riesgo: cambio de Claude API pricing.** El cálculo de gross margin asume tokens Claude Sonnet 4.6 al pricing actual. Si Anthropic sube 2-3×, el margen Pro baja a 90% (sigue saludable). Si sube 10×, hay que considerar caché agresiva o downgrade a Haiku para queries sencillas.
 
 ---
@@ -77,4 +77,4 @@ Para validar que los precios cubren costos y dejan margen:
 
 ---
 
-> **Nota de mantenimiento:** este archivo y `business/pricing.docx` contienen el mismo modelo. Si actualizas el `.md`, refleja los cambios también en el `.docx` para que no diverjan. Si las entrevistas F6-F8 cambian los rangos, actualizar la tabla §2, el sanity check §3, y la entrada correspondiente en `PROGRESS.md`.
+> **Nota de mantenimiento:** este archivo y `business/pricing.docx` contienen el mismo modelo. Si actualizas el `.md`, refleja los cambios también en el `.docx` para que no diverjan. **`pricing.docx` está desincronizado tras la actualización del 2026-05-13 con datos de F8 — regenerar antes de la entrega final.** Si los pilotos post-Demo Day cambian los rangos, actualizar la tabla §2, el sanity check §3, y la entrada correspondiente en `PROGRESS.md`.

@@ -20,7 +20,7 @@ Documentos de discovery, validación de mercado y preparación para el Demo Day.
 - ✅ F12 — TAM/SAM/SOM (`mercado.md` + `.docx`)
 - ✅ F13 — Plan Go-to-Market (`gtm.md` + `.docx`)
 - ✅ F14 — Diferenciador defendible (`diferenciador.md` + `.docx`)
-- 🟡 F15 — Documento de negocio consolidado (`negocio.md` + `negocio.docx` redactados con F3/F6/F9/F10/F11/F12/F13/F14 integrados. §2.2 con persona Andrés Villanueva, §2.3 con frecuencias cuantificadas de Carlos + Andrés, §3.1 con Carlos Orellán y filas `[PENDIENTE]` para F7/F8, §3.3 con 7 insights validados + 3 hipótesis pendientes + 4 cambios de producto/pricing/GTM derivados. §10 sigue con `[PENDIENTE: COMPLETAR DATOS DEL EQUIPO]` para nombres y reparto técnico. Quedará 100% al cerrar F7/F8 y llenar §10.)
+- 🟡 F15 — Documento de negocio consolidado (`negocio.md` integrado al 95% con F3/F6/F7/F8/F9/F10/F11/F12/F13/F14. §2.3 con frecuencia/severidad cuantificadas de los 3 entrevistados + Andrés (gradiente 1 h/mes → 20 h/mes); §3.1 con la tabla de las 3 entrevistas; §3.3 con 9 insights consolidados (decisor matizado, dolor disociado del tamaño puro, monitor proactivo como oportunidad nueva) + hipótesis resueltas + cambios al producto/pricing/GTM derivados de F6+F7+F8; §6.3 actualizada con la validación explícita de Raúl al rango $200/mes. **`negocio.docx` queda desincronizado tras esta actualización** — regenerar antes de la entrega final (ver convención .md/.docx). §10 sigue con `[PENDIENTE: COMPLETAR DATOS DEL EQUIPO]` para nombres y reparto técnico — único hueco para llegar al 100%.)
 
 ---
 

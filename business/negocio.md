@@ -91,13 +91,13 @@ El problema no es de capacidad técnica del dev. Es **falta de herramienta inter
 | Andrés — persona, tech lead fintech | 3 × ~180 GB | 4-8 h |
 | Raúl — dev fullstack, 100+ BDs en carrera | 15-20 BDs activas, ~3 TB la mayor | 3-4 h (prod estable) / 16-20 h (dev) |
 
-**Conclusión clave:** el dolor escala con la **ausencia de DBA dedicado**, no con el tamaño absoluto. Jos (1 GB) dedica 10× más tiempo que Carlos (30 GB con equipo). Cuando un tech lead absorbe el rol, se vuelve "medio DBA" sin que el rol exista formalmente — Raúl lo dijo literal: *"siento que la mitad de mi tiempo es de base de datos cuando debería estar haciendo otras cosas de tech lead"*.
+**Conclusión clave:** el dolor escala con la **ausencia de DBA dedicado** y con la **fase del ciclo de vida**, no con el tamaño absoluto. Jos (1 GB) dedica 10× más tiempo que Carlos (30 GB con equipo). Raúl confirma la dimensión "fase": pasa de **3-4 h/mes** en producción estable a **16-20 h/mes** en etapas tempranas (desarrollo, análisis, staging) — los queries existen aunque la BD aún no esté en producción.
 
-**Anti-patterns reportados — 3 de 3 mapean a detectores activos de PgPilot:**
+**Anti-patterns reportados — 2 de 3 mapean a detectores activos de PgPilot; 1 oportunidad de roadmap:**
 
-- **Carlos (F6):** `SELECT *` sobre tablas con BLOBs → **D9** (`select_star`).
-- **Jos (F7):** JOINs sin índices generando producto cartesiano → **D16** (`seq_scan_missing_index`). Fix manual tomó **1 semana** completa.
-- **Raúl (F8):** tabla de embarques de 300-400 GB en sistema logístico transnacional. Queries tardaban **horas** y era completamente no funcional. Solución: particionamiento manual + tablas temporales con `COPY` de Postgres. Funcionaba al 90% (fechas recientes); históricos seguían lentos.
+- **Carlos (F6):** `SELECT *` sobre tablas con BLOBs → **D9** (`select_star`). ✅ Detector activo.
+- **Jos (F7):** JOINs sin índices generando producto cartesiano → **D16** (`seq_scan_missing_index`). Fix manual tomó **1 semana** completa. ✅ Detector activo.
+- **Raúl (F8):** tabla de embarques de 300-400 GB en sistema logístico transnacional. Queries tardaban **horas** pese a tener índices. Solución manual: particionar físicamente la tabla + tablas temporales con `COPY` de Postgres para clonar embarques recientes (~300-400 MB). Funcionaba al 90% (fechas recientes); históricos de 5-7+ años seguían lentos. 🟢 **No es un detector activo hoy**; queda como oportunidad de roadmap (detección proactiva de tablas crecientes sin estrategia de particionamiento — adyacente a D22 `count_star_on_large_table` que ya señala tablas grandes).
 
 **Severidad y costo mensual:** **$25-1,000 USD/equipo/mes** en tiempo directo (Raúl: 16-20 h/mes en dev × $25-50/h = $400-1,000/mes; Carlos: $25-50/mes; Jos: $250-500/mes). Por incidente mayor con impacto a operaciones: **$500-5,000 USD adicionales** (Gartner cost-of-downtime; el caso de Raúl con tabla de 300-400 GB en sistema logístico muestra el costo de no tener particionamiento proactivo).
 
@@ -129,29 +129,29 @@ El problema no es de capacidad técnica del dev. Es **falta de herramienta inter
 
 1. **Dolor reactivo, no proactivo. ✅ 3/3.** Carlos: "actuamos por eventos"; Jos: 1 semana de fix manual; Raúl: 16-20 h/mes en etapas tempranas con diagnóstico manual (DBeaver + EXPLAIN ANALYZE). **Implicación:** insertarnos en el momento de la alerta, no antes.
 
-2. **Anti-patterns reales → 3/3 mapean a detectores. ✅ Validado.** D9 (Carlos), D16 (Jos), tabla sin particiones de 300-400 GB (Raúl). **Implicación:** los 3 casos son demos del pitch; el de Raúl muestra la escala enterprise (queries que tardan horas por falta de particionamiento).
+2. **Anti-patterns reales → 2/3 mapean a detectores activos + 1 oportunidad de roadmap. ✅ Parcial.** D9 (Carlos), D16 (Jos); Raúl (tabla 300-400 GB sin particiones) no tiene detector hoy. **Implicación:** los casos de Carlos y Jos son demos directos del pitch; el de Raúl muestra la escala enterprise (queries que tardan horas por falta de particionamiento proactivo) y motiva el roadmap de un detector adyacente.
 
-3. **CI/desarrollo como punto de entrada con matiz. ✅ 3/3.** Carlos: PR/CI con Liquibase; Jos: dev/staging; Raúl: dual (CI + monitor proactivo). **Implicación:** PgPilot necesita múltiples superficies (editor + GitHub Action + monitor de workload).
+3. **CI/desarrollo como punto de entrada con matiz. ✅ 3/3.** Carlos: PR/CI con Liquibase; Jos: dev/staging; Raúl articula dos productos distintos — análisis de arquitectura (fase de diseño de la BD) y análisis de performance en tiempo real (cualquier momento del ciclo, desde staging temprano hasta producción para mantenimiento). **Implicación:** PgPilot necesita múltiples superficies (editor + GitHub Action + monitor de workload).
 
 4. **Privacidad y read-only son bloqueador legal. ✅ 3/3 con escalada por sector.** Carlos: read-only; Jos: no logs, control por tabla; Raúl: conexión punto a punto segura, read-only indiscutible, datos efímeros, preguntó si es on-premise o de terceros. **Implicación:** modo offline + tier Enterprise self-hosted abren el sector regulado LATAM.
 
-5. **Decisor heterogéneo — "es el CTO" matizada. ⚠️ Parcial.** Carlos: CTO; Jos: dual técnico + gerencial; Raúl: equipo técnico impulsa, CTO/directivo decide. **Implicación:** Pro/Team con sales bottom-up a tech leads; Enterprise top-down al CTO.
+5. **Decisor heterogéneo — "es el CTO" matizada. ⚠️ Parcial.** Carlos: CTO; Jos: dual técnico + gerencial (líder de infra + gerente); Raúl: equipo técnico impulsa la necesidad, CTO/directivo toma la decisión final. **Implicación:** Pro/Team con sales bottom-up al equipo técnico como impulsor + cierre con CTO/gerencia en empresas con proceso formal; Enterprise top-down al CTO.
 
 6. **No usan herramientas especializadas. ✅ 3/3.** Ninguno usa pganalyze / EverSQL / DBtune. Raúl usa DBeaver Enterprise + pg_stat_statements + EXPLAIN ANALYZE (herramientas nativas, no SaaS). **Implicación:** PgPilot compite con "hacerlo a mano" en LATAM, no con pganalyze.
 
-7. **WTP $29 Pro / $200 BD validado en el sector con más dolor. ✅ 1/3 explícito + 2/3 sin objeción.** Raúl validó *"sin pensarlo"*. **Implicación:** mantener Pro $29 y Team $49; plan B "$19" queda como contingencia.
+7. **Modelo de licencia per-BD cuestionado por escala enterprise. ⚠️ 1/3 cuestiona, 2/3 sin objeción.** Raúl (15-20 BDs activas, la mayor ~3 TB) cuestionó si el pricing por BD es el correcto a esa escala y sugirió explorar modelos por usuarios o por tiempo de ejecución. Carlos y Jos no objetaron el rango $50-200/BD. **Implicación:** mantener el modelo per-seat Pro $29 / Team $49 como principal; evaluar add-on por flota de BDs o tier por tiempo de ejecución para cuentas Enterprise con 15+ BDs; plan B "$19" queda como contingencia.
 
 8. **Dolor escala con ausencia de DBA, no con tamaño puro de BD. ⚠️ Hipótesis matizada.** Jos (1 GB sin DBA) = 10 h/mes > Carlos (30 GB con equipo) = 1 h/mes. **Implicación:** ICP correcto es "5-20 devs sin DBA", no "≥100 GB".
 
 9. **Monitor proactivo de degradación como 2º caso de uso. 🟢 Oportunidad nueva (Raúl).** *"Que revise queries existentes y avise cuáles se pueden optimizar"*. **Implicación:** feature Q3/Q4 sobre `pg_stat_statements` con tracking histórico + alertas.
 
-**Hipótesis resueltas / abiertas:** WTP $29 ✅ (Raúl); "dolor crece con tamaño" ⚠️ matizada (DBA-ausencia es el predictor real); modo offline sin LLM 🟡 parcial (Raúl pide self-hosted; R5 explícito no preguntado — confirmar en pilotos).
+**Hipótesis resueltas / abiertas:** WTP $29 🟡 sin objeción de Carlos y Jos, pero Raúl cuestionó el modelo per-BD para flotas grandes — falta validación con paying customers; "dolor crece con tamaño" ⚠️ matizada (DBA-ausencia y fase del ciclo de vida son los predictores reales); modo offline sin LLM 🟡 parcial (Raúl pide tratamiento efímero y prefiere on-premise; R5 explícito no preguntado — confirmar en pilotos).
 
 **Cambios al producto / pricing / GTM derivados de F6 + F7 + F8:**
 
 - **Producto:** GitHub Action CI en Q2; self-hosted Docker Enterprise en Q3; monitor de degradación en Q3/Q4.
-- **Pricing:** mantener Pro $29 y Team $49; plan B "$19" como contingencia.
-- **GTM:** Pro/Team bottom-up a tech leads (autonomía hasta ~$500/mes); Enterprise top-down a CTO + finanzas.
+- **Pricing:** mantener per-seat Pro $29 y Team $49 como modelo principal; evaluar add-on por flota de BDs o tier por tiempo de ejecución para Enterprise con 15+ BDs (señal de Raúl); plan B "$19" como contingencia.
+- **GTM:** Pro/Team bottom-up con el equipo técnico como impulsor + aprobación de gerente/CTO en empresas con proceso formal (señal consistente Carlos/Jos/Raúl); Enterprise top-down a CTO + finanzas.
 - **Messaging:** #1 "Read-only + sanitización fuerte"; #2 "Self-hosted disponible"; #3 "Detecta los anti-patterns que ya te dolieron — D9/D16 con casos reales + detección proactiva de tablas sin particiones".
 
 ---

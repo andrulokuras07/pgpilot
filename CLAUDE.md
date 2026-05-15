@@ -2,7 +2,7 @@
 
 Analizador inteligente de queries Postgres que detecta anti-patterns, recomienda índices y sugiere reescrituras combinando un motor determinístico con una capa de IA con guardrails. Producto B2B para developers backend con Postgres en producción.
 
-Proyecto final de SIS2404 (Bases de Datos Avanzadas), Universidad Anáhuac Querétaro. Equipo de 5 personas, Demo Day el 14 de mayo de 2026.
+Proyecto final de SIS2404 (Bases de Datos Avanzadas), Universidad Anáhuac Querétaro. Equipo de 6 personas, Demo Day el 14 de mayo de 2026.
 
 ## La regla #1 del proyectos
 

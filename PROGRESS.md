@@ -243,6 +243,45 @@ Copia esta plantilla cuando agregues un día nuevo. Borra los placeholders.
 ---
 
 
+## 2026-05-14 (F15 — resincronización con F8 real)
+
+### Avances
+
+#### F15 — `negocio.md` y `negocio.docx` alineados con la entrevista 3 real (Raúl Zavaleta)
+- **Autor:** Alexander.
+- **Archivos:** `business/negocio.md`, `business/negocio.docx`.
+- **Notas:** `negocio.docx` arrastraba un "Raúl de la Breña" (tech lead fintech, 3 BDs ~120 GB, NOT IN sobre 2M registros bloqueando pagos, validó "$200/mes sin pensarlo") que correspondía a un esbozo previo a la entrevista real de F8 (Zavaleta — desarrollador fullstack, 15-20 BDs activas con la mayor ~3 TB, caso de particionamiento manual sobre tabla de 300-400 GB, **cuestionó** el modelo per-BD a su escala). `negocio.md` estaba parcialmente actualizado pero conservaba la cita ficticia *"siento que la mitad de mi tiempo es de base de datos…"* (no existe en `entrevista-3.md`), la línea "WTP $29 ✅ (Raúl)" y la "autonomía hasta $500/mes" del decisor. Cambios materiales:
+  - **§2.3:** removida cita ficticia; añadida la dimensión "fase del ciclo de vida" que Zavaleta sí articuló (3-4 h/mes en producción estable vs 16-20 h/mes en etapas tempranas).
+  - **§2.3 + §3.3 insight #2:** "3/3 mapean a detectores activos" → "2/3 + 1 oportunidad de roadmap" (el caso de Raúl es particionamiento de tabla 300-400 GB; PgPilot no tiene detector de particionamiento hoy — queda adyacente a D22).
+  - **§3.3 insight #3:** sustituido "dual (CI + monitor proactivo)" por la articulación real de Zavaleta (análisis de arquitectura en fase de diseño + análisis de performance en tiempo real para mantenimiento).
+  - **§3.3 insight #5:** añadido que el CTO/directivo toma la decisión final aunque el equipo técnico impulse.
+  - **§3.3 insight #7:** reformulado de "WTP $29 ✅ validado por Raúl" a "modelo per-BD cuestionado por Raúl" — Zavaleta sugirió explorar pricing por usuarios o por tiempo de ejecución con 15-20 BDs activas.
+  - **§3.3 hipótesis WTP $29:** ✅ → 🟡 (falta validación con paying customers).
+  - **§3.3 cambios pricing/GTM:** quitada la "autonomía hasta $500/mes" (no soportada por la nueva entrevista); añadido add-on por flota de BDs / tier por tiempo de ejecución como evaluación para Enterprise con 15+ BDs.
+  - **§6.3 validación de precios:** ajustada para reflejar el cuestionamiento de Zavaleta al per-BD (coherente con la línea ya existente en este apartado).
+  - **`negocio.docx`:** regeneradas las 4 tablas afectadas (§2.3, §3.1 fila Raúl, §3.3, §6.3) vía script temporal `scripts/_tmp_update_negocio_docx.py` (borrado tras correr, según convención de `business/CLAUDE.md`). Verificación post-corrida: ningún marcador del Raúl previo (`de la Breña`, `NOT IN sobre 2M`, `sin pensarlo`, `120 GB`, `transacciones de pago`) sobrevive en las celdas tocadas.
+- **Tests:** N/A (documentación). `negocio.md` y `negocio.docx` ahora consistentes entre sí y con `entrevista-3.md`. §10 sigue con `[PENDIENTE: COMPLETAR DATOS DEL EQUIPO]` para nombres/matrículas/reparto final.
+
+### Decisiones
+
+#### Reconocer que el caso de Raúl no mapea a un detector activo
+- **Autor:** Alexander.
+- **Contexto:** El `negocio.md` afirmaba que las 3 entrevistas mapean 3/3 a detectores activos. Con la entrevista real de Zavaleta, el caso es particionamiento manual de una tabla de 300-400 GB — PgPilot no tiene detector de particionamiento.
+- **Alternativas consideradas:** (A) mantener "3/3" forzando una equivalencia laxa con D22 (`count_star_on_large_table`); (B) cambiar a "2/3 + 1 oportunidad de roadmap" reconociendo el gap; (C) crear el detector de particionamiento ahora.
+- **Decisión:** B.
+- **Razón:** R15 / honestidad declarada — el documento de negocio es lo que se entrega al jurado y la consistencia con las entrevistas es auditable. Forzar la equivalencia con D22 sería defendible bajo presión pero no honesto; el caso de Zavaleta describe un patrón de crecimiento sin estrategia de particionamiento, no un `count(*)`. Crear el detector hoy queda fuera de scope antes del Demo Day del 14-may-2026.
+- **Trade-offs:** El pitch pierde un golpe directo ("los 3 casos son demos del pitch con detectores activos"), pero gana defensibilidad ("2 demos directos + 1 caso enterprise que motiva el roadmap"). El de Zavaleta sigue siendo útil narrativamente como evidencia de la escala del dolor.
+
+#### Bajar la confianza de "WTP $29 validado" a 🟡 con dato matizado
+- **Autor:** Alexander.
+- **Contexto:** El `negocio.md` afirmaba "WTP $29 ✅ (Raúl)" con la cita "200 dólares contra lo que me pagan… sin pensarlo". Esa cita era del esbozo previo a la entrevista real; Zavaleta de hecho **cuestionó** el modelo per-BD a su escala (15-20 BDs activas).
+- **Alternativas consideradas:** (A) borrar la mención de Raúl del WTP y dejar "sin objeción de Carlos y Jos"; (B) marcar el WTP como 🟡 con el matiz de que Raúl cuestionó el modelo per-BD, sin objetar el precio per-seat; (C) tratar el cuestionamiento como objeción y bajar a ⚠️.
+- **Decisión:** B.
+- **Razón:** Zavaleta no objetó el precio per-seat (no se le preguntó explícitamente). Lo que cuestionó es el modelo per-BD a una escala donde un dev maneja 15-20 BDs. Es señal real pero no es objeción al per-seat. 🟡 captura la incertidumbre sin sobrerreaccionar.
+- **Trade-offs:** El doc pierde la línea de "validación con sector con más dolor". A cambio, el pitch puede defender honestamente: "tenemos sin objeción de 2/3 al rango, y 1/3 nos pidió un modelo alternativo a flotas grandes — por eso evaluamos un add-on por flota en Enterprise". Más defendible en Q&A que una validación inflada.
+
+---
+
 ## 2026-05-13 (F8 — entrevista 3 + F9 actualizado)
 
 ### Avances

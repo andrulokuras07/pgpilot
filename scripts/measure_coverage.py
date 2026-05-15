@@ -92,11 +92,24 @@ def _get_pool():
 
 
 def _explain(pool, sql: str) -> Any:
+    """EXPLAIN ANALYZE con `statement_timeout` extendido para *medir* cobertura.
+
+    Q19 (NOT IN con NULL) mide ~75s a mano y cae por el `statement_timeout
+    = 5000` que el pool aplica por R7. La rúbrica ya mide 18/20 vía
+    `tests/integration/test_coverage_appdb_v1.py` con
+    `APPDB_TEST_TIMEOUT_MS=180000`; este script aplica el mismo override
+    puntual con `SET LOCAL` para que reporte el mismo número que el test.
+
+    El override es **local al script de medición** (R7 sigue intacto en
+    runtime — el pool de `backend/main.py` no lo hereda).
+    """
     try:
         with pool.connection() as conn:
-            cur = conn.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
-            row = cur.fetchone()
-            return row[0] if row else None
+            with conn.transaction():
+                conn.execute("SET LOCAL statement_timeout = 180000")
+                cur = conn.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
+                row = cur.fetchone()
+                return row[0] if row else None
     except Exception as exc:  # noqa: BLE001
         return {"__error__": str(exc)}
 

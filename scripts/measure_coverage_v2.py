@@ -285,23 +285,19 @@ def _get_pool():
 
 
 def _explain(pool, sql: str) -> Any:
-    """EXPLAIN ANALYZE con timeout extendido a 180s.
+    """EXPLAIN ANALYZE bajo el `statement_timeout` que aplique el pool.
 
-    El pool de `/conector` aplica `statement_timeout = 5000` por R7 (es lo
-    correcto para el orquestador de runtime, donde queremos cancelar queries
-    largas del usuario). Pero las queries plantadas en AppDB v2 son lentas a
-    propósito (Q15 NOT IN sin índice nullable mide ~76s a mano). Para
-    *medir cobertura* necesitamos verlas completas, así que subimos el
-    timeout solo en este script vía `SET LOCAL` dentro de transacción
-    explícita (recomendación de `conector/CLAUDE.md`).
+    El pool de `/conector` aplica `statement_timeout = 5000` por R7. Las
+    queries plantadas en AppDB v2 son lentas a propósito (Q15 NOT IN sin
+    índice nullable mide ~76s a mano y cae por timeout). El script no
+    relaja ese límite: medir cobertura "honesta" significa medirla con el
+    mismo timeout que aplica en producción contra una BD cliente.
     """
     try:
         with pool.connection() as conn:
-            with conn.transaction():
-                conn.execute("SET LOCAL statement_timeout = 180000")
-                cur = conn.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
-                row = cur.fetchone()
-                return row[0] if row else None
+            cur = conn.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
+            row = cur.fetchone()
+            return row[0] if row else None
     except Exception as exc:  # noqa: BLE001
         return {"__error__": str(exc)}
 
